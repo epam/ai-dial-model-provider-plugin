@@ -1,0 +1,130 @@
+# What is refused before any call and in which order: the body, the type of model, the endpoint, the extra data, the
+# endpoint's /responses suffix, the key, the token, api-version, then the type of stream.
+---
+name: retrieve without an endpoint
+request: {method: GET, path: /openai/v1/responses/r, headers: {X-Upstream-Endpoint: !delete }, body: !delete }
+mocks: []
+expect: {status: 502, json: {error: {message: X-UPSTREAM-ENDPOINT header is missing in the request., type: internal_server_error, code: '502'}}}
+---
+name: endpoint is checked before the body
+request: {headers: {X-Upstream-Endpoint: !delete }, body: '{"model":'}
+mocks: []
+expect: {status: 502, json: {error: {message: X-UPSTREAM-ENDPOINT header is missing in the request., type: internal_server_error, code: '502'}}}
+---
+name: endpoint is checked before the model and the stream flag
+request: {headers: {X-Upstream-Endpoint: !delete }, body: '{"model":7,"stream":1}'}
+mocks: []
+expect: {status: 502, json: {error: {message: X-UPSTREAM-ENDPOINT header is missing in the request., type: internal_server_error, code: '502'}}}
+---
+name: endpoint is checked before the extra data
+request: {headers: {X-Upstream-Endpoint: !delete , X-Upstream-Extra-Data: '[]'}}
+mocks: []
+expect: {status: 502, json: {error: {message: X-UPSTREAM-ENDPOINT header is missing in the request., type: internal_server_error, code: '502'}}}
+---
+name: extra data is checked before the body
+request: {headers: {X-Upstream-Extra-Data: '[]'}, body: '{"model":'}
+mocks: []
+expect: {status: 502, json: {error: {$partial: {message: "X-Upstream-Extra-Data header doesn't contain the expected JSON object"}}}}
+---
+name: api-version is checked before the body
+request:
+  path: /openai/responses
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'}
+  body: '{"model":'
+mocks: []
+expect: {status: 400, json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}}
+---
+name: api-version is checked before the key
+request:
+  path: /openai/responses
+  headers:
+    X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'
+    X-Upstream-Key: !delete
+    X-Upstream-Extra-Data: '{"vendor":"alibaba-cloud"}'
+mocks: []
+expect: {status: 400, json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}}
+---
+name: api-version is checked before the Azure AD token
+request:
+  path: /openai/responses
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses', X-Upstream-Key: !delete }
+mocks: []
+expect: {status: 400, json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}}
+---
+name: Azure AD token failure with an api-version is a 401
+request:
+  path: /openai/responses
+  query: {api-version: v}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses', X-Upstream-Key: !delete }
+mocks: []
+expect: {status: 401, json: {error: {message: Authentication failed, type: Unauthorized, code: '401'}}}
+---
+name: body is checked before the key
+request:
+  headers: {X-Upstream-Key: !delete , X-Upstream-Endpoint: 'https://api.openai.com/v1/responses'}
+  body: '{"model":'
+mocks: []
+expect: {status: 400, json: {error: {message: {$regex: '^The request body is not valid JSON'}, type: invalid_request_error, code: '400'}}}
+---
+name: stream flag is checked before the key
+request:
+  headers: {X-Upstream-Key: !delete , X-Upstream-Endpoint: 'https://api.openai.com/v1/responses'}
+  body: '{"stream":1}'
+mocks: []
+expect: {status: 400, json: {error: {message: '"stream" must be a boolean, but is a number', type: invalid_request_error, code: '400'}}}
+---
+name: endpoint with a query string
+request: {headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/v1/responses?x=1'}}
+mocks: []
+expect:
+  status: 502
+  json: {error: {message: Invalid upstream endpoint format, type: internal_server_error, code: '502'}}
+---
+name: empty endpoint
+request: {headers: {X-Upstream-Endpoint: ''}}
+mocks: []
+expect:
+  status: 502
+  json: {error: {message: Invalid upstream endpoint format, type: internal_server_error, code: '502'}}
+---
+name: extra data is checked before the endpoint suffix
+request: {headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/v1/chat/completions', X-Upstream-Extra-Data: '[]'}}
+mocks: []
+expect: {status: 502, json: {error: {$partial: {message: "X-Upstream-Extra-Data header doesn't contain the expected JSON object"}}}}
+---
+name: extra data is checked before a Bedrock endpoint
+request:
+  headers: {X-Upstream-Endpoint: 'https://bedrock-mantle.us-east-1.api.aws/openai/v1/responses', X-Upstream-Extra-Data: '[]'}
+mocks: []
+expect: {status: 502, json: {error: {$partial: {message: "X-Upstream-Extra-Data header doesn't contain the expected JSON object"}}}}
+---
+name: extra data is checked before the token of a cancel
+server: {stubs: {azure_ad_error: boom}}
+request:
+  path: /openai/v1/responses/r/cancel
+  headers: {X-Upstream-Key: !delete , X-Upstream-Extra-Data: 'null'}
+  body: !delete
+mocks: []
+expect: {status: 502, json: {error: {$partial: {message: "X-Upstream-Extra-Data header doesn't contain the expected JSON object"}}}}
+---
+name: token is checked before the id of a cancel
+server: {stubs: {azure_ad_token: aad}}
+request:
+  path: /openai/v1/responses/%2E%2E/cancel
+  headers: {X-Upstream-Key: !delete }
+  body: !delete
+mocks:
+- request: {path: /v1/cancel, headers: {authorization: Bearer aad}, body: ''}
+---
+name: empty key on a v1 host is refused without fetching a token
+server: {stubs: {azure_ad_error: must not be asked}}
+request: {headers: {X-Upstream-Key: ''}}
+mocks: []
+expect:
+  status: 500
+  json:
+    error:
+      message: "Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable."
+      type: internal_server_error
+      code: '500'
+

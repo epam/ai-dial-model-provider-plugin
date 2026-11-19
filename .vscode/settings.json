@@ -1,0 +1,30 @@
+{
+  "editor.detectIndentation": false,
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "editor.indentSize": 2,
+  "editor.insertSpaces": true,
+  "[java]": {
+    "editor.defaultFormatter": "josevseb.google-java-format-for-vs-code",
+    "editor.tabSize": 4,
+    "editor.indentSize": 4
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  // Must match build.gradle's palantirJavaFormat('2.72.0'). pjf has native binaries for Linux and Apple-silicon macOS
+  // only: elsewhere, disable the extension for this workspace and run `make format` (README "Development").
+  "java.format.settings.google.style": "palantir",
+  "java.format.settings.google.version": "2.72.0",
+  // pjf's command line formats in Google style unless given --palantir, and rewraps long strings unless told not to.
+  "java.format.settings.google.extra": "--palantir --skip-reflowing-long-strings",
+  "java.compile.nullAnalysis.mode": "automatic",
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable"
+}

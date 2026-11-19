@@ -1,0 +1,78 @@
+# POST /responses and /responses/input_tokens: the body and the client's query forwarded as received, the SDK's
+# headers, the cache headers; the upstream's answer, stream or error as it came but for an error object's param.
+---
+name: create as received
+request:
+  path: /openai/v1/responses
+  query: {x: '1', api-version: v}
+  headers: {X-Dial-Cache-Breakpoint-Path: '', Content-Type: text/plain}
+  body: "{\"model\":\"gpt-5\",\"input\":[{\"role\":\"user\",\"content\":\"é\"}],\"stream\":false}"
+mocks:
+- request:
+    query: {x: '1'}
+    headers:
+      content-type: application/json
+      accept: application/json
+      accept-encoding: {$absent: true}
+    body: "{\"model\":\"gpt-5\",\"input\":[{\"role\":\"user\",\"content\":\"é\"}],\"stream\":false}"
+  response:
+    headers: {Content-Encoding: identity, X-A: '1'}
+expect:
+  headers:
+    x-a: '1'
+    content-encoding: identity
+    x-dial-cache-breakpoint-path: prefix.body.input[0]
+    x-dial-cache-expire-at: '1300'
+---
+# The heartbeat between events, and an event split across the upstream's chunks, are ResponsesRoutesTest's.
+name: stream as received
+request: {body: '{"model":"gpt-5","stream":true,"input":[]}'}
+mocks:
+- request: {body: '{"model":"gpt-5","stream":true,"input":[]}'}
+  response:
+    status: 201
+    headers: {Content-Type: text/event-stream}
+    body: "event: a\ndata: {\"x\":1}\n\nevent: b\r\ndata: 2\r\n\r\ndata: 3\n\ndata: tail"
+expect:
+  status: 201
+  body: "event: a\ndata: {\"x\":1}\n\nevent: b\r\ndata: 2\r\n\r\ndata: 3\n\ndata: tail"
+---
+# get_bool("stream", False): a stream member of another type is refused, nothing sent.
+name: stream not a bool
+request: {body: '{"stream":1}'}
+mocks: []
+expect:
+  status: 400
+  json:
+    error:
+      message: '"stream" must be a boolean, but is a number'
+      type: invalid_request_error
+      code: '400'
+---
+name: upstream error is proxied as it came
+mocks:
+- response:
+    status: 429
+    headers: {Retry-After: '7'}
+    body: '{"error":{"message":"slow","type":"requests","param":null,"code":"rate_limit_exceeded"}} trailing'
+expect:
+  status: 429
+  headers: {retry-after: '7'}
+  body: '{"error":{"message":"slow","type":"requests","param":null,"code":"rate_limit_exceeded"}} trailing'
+---
+name: upstream error not an error object
+mocks:
+- response:
+    status: 500
+    headers: {Content-Type: text/plain}
+    body: boom
+expect: {status: 500, body: boom}
+---
+name: input_tokens forwards the body
+request:
+  path: /openai/v1/responses/input_tokens
+  body: '{"model":"gpt-5","stream":false,"extra_headers":{"x":1}}'
+mocks:
+- request:
+    path: /v1/responses/input_tokens
+    body: '{"model":"gpt-5","stream":false,"extra_headers":{"x":1}}'

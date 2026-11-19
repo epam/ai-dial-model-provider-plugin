@@ -1,0 +1,20 @@
+# A streaming request on the invoke-model API: invoke-with-response-stream, and the answer is AWS's binary event
+# stream, which the service decodes and writes as the Messages API's SSE, one event per `chunk` message.
+request:
+  body: '{"model":"anthropic.claude-x","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+mocks:
+- request:
+    path: /bedrock/model/anthropic.claude-x/invoke-with-response-stream
+    body: '{"max_tokens":5,"messages":[{"role":"user","content":"hi"}],"anthropic_version":"bedrock-2023-05-31"}'
+  response:
+    headers: {Content-Type: application/vnd.amazon.eventstream}
+    body: !delete
+    body_base64: $base64('/bedrock-anthropic/_files/stream-ok.bin')
+expect:
+  headers: {content-type: 'text/event-stream', content-encoding: {$absent: true}}
+  body: !delete
+  sse:
+    events: !ref /_lib/anthropic-stream.yaml:events
+    termination: complete
+    aggregate:
+    - {type: concat, path: delta.text, equals: Hello}

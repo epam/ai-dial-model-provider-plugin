@@ -1,0 +1,53 @@
+# The routes of a response by its id (retrieve, delete, cancel): the id as received, the client's query but
+# api-version, no body sent but cancel's, which is empty; dot segments resolved as httpx resolves them.
+---
+name: retrieve
+request:
+  method: GET
+  path: /openai/v1/responses/resp%201!
+  query: {stream: 'true', api-version: v, x: /}
+  headers: {Content-Type: x}
+  body: !delete
+mocks:
+- request:
+    method: GET
+    path: /v1/responses/resp%201!
+    query: {stream: 'true', x: /}
+    headers: {content-type: {$absent: true}}
+    body: ''
+---
+name: delete
+request:
+  method: DELETE
+  path: /openai/v1/responses/resp_1
+  body: !delete
+mocks:
+- request:
+    method: DELETE
+    path: /v1/responses/resp_1
+    headers: {accept: application/json, content-length: '0'}
+    body: ''
+---
+name: cancel
+request:
+  path: /openai/v1/responses/resp_1/cancel
+  body: ignored
+mocks:
+- request: {path: /v1/responses/resp_1/cancel, body: ''}
+  response: {status: 201, body: '{}'}
+expect: {status: 201, body: '{}'}
+---
+name: dot segments up
+request:
+  path: /openai/v1/responses/%2E%2E/cancel
+  body: !delete
+mocks:
+- request: {path: /v1/cancel, body: ''}
+---
+name: dot segment
+request:
+  method: DELETE
+  path: /openai/v1/responses/%2e
+  body: !delete
+mocks:
+- request: {method: DELETE, path: /v1/responses, body: ''}

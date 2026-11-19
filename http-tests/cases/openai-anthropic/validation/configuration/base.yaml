@@ -1,0 +1,6 @@
+# A refused upstream: a 502 api_error in the Anthropic API's error body, nothing sent upstream.
+mocks: []
+expect:
+  status: 502
+  headers: {content-type: application/json}
+  json: {type: error, error: {type: api_error, message: {$type: string}}}

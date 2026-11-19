@@ -1,0 +1,40 @@
+// Live tests of the passthroughs against AWS, GCP and Azure (README.md). They need cloud credentials, so they are not
+// part of `check`: `make integration-tests-smoke` and `make integration-tests` run them.
+dependencies {
+    testImplementation project(':provider')
+    testImplementation "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
+    // An AWS profile of IAM Identity Center (SSO), as a developer machine has: the service itself needs no SSO modules.
+    testRuntimeOnly platform("software.amazon.awssdk:bom:${aws_sdk_v2_version}")
+    testRuntimeOnly "software.amazon.awssdk:sso"
+    testRuntimeOnly "software.amazon.awssdk:ssooidc"
+    // The service's logs of a failing call, at WARN.
+    testRuntimeOnly "ch.qos.logback:logback-classic:${logback_version}"
+}
+
+tasks.named('test') {
+    enabled = false
+}
+
+// The cloud suites, each model on each way to reach it, in parallel (src/test/resources/junit-platform.properties).
+tasks.register('integrationTest', Test) {
+    description = 'Runs the integration tests against the clouds.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    outputs.upToDateWhen { false }
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'short'
+        showStandardStreams = false
+    }
+}
+
+// The availability, authorization and permissions report: one question to every model, in a table.
+tasks.register('smoke', JavaExec) {
+    description = 'Reports which clouds and models answer, and why the others do not.'
+    group = 'verification'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.epam.aidial.provider.integration.Smoke'
+    standardInput = System.in
+}

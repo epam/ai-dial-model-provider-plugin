@@ -1,0 +1,106 @@
+# api-version: the last value, first in the upstream query, escaped; required on every route, whatever follows.
+---
+name: v1 route with a deployment endpoint
+request: {path: /openai/v1/responses}
+---
+name: endpoint without a deployment
+request:
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/responses'}
+---
+name: input_tokens on a deployment endpoint
+request:
+  path: /openai/responses/input_tokens
+  query: {api-version: v, x: '1'}
+mocks:
+- request:
+    path: /openai/responses/input_tokens
+    query: {api-version: v, x: '1'}
+---
+name: api-version goes first and the last value wins
+request:
+  query: {x: '1', api-version: ['2024-01-01', 2025-04-01-preview]}
+mocks:
+- request: {query: {api-version: 2025-04-01-preview, x: '1'}}
+---
+name: api-version is escaped
+request:
+  query: {api-version: 'a b'}
+mocks:
+- request: {query: {api-version: 'a b'}}
+---
+name: cancel query escaping
+request:
+  path: /openai/responses/r/cancel
+  query: {x: '/!', s: ';=&+', api-version: v}
+  body: !delete
+mocks:
+- request:
+    path: /openai/responses/r/cancel
+    query: {api-version: v, x: '/!', s: ';=&+'}
+    body: ''
+---
+name: no api-version
+request: {query: !replace {}}
+mocks: []
+expect:
+  status: 400
+  json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}
+---
+name: empty api-version
+request: {query: {api-version: ''}}
+mocks: []
+expect:
+  status: 400
+  json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}
+---
+name: last api-version empty
+request: {query: {api-version: [v, '']}}
+mocks: []
+expect:
+  status: 400
+  json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}
+---
+name: endpoint ending in /openai without api-version
+request:
+  query: !replace {}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/responses'}
+mocks: []
+expect:
+  status: 400
+  json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}
+---
+name: retrieve without api-version
+request:
+  method: GET
+  path: /openai/responses/resp_1
+  query: !replace {}
+  body: !delete
+mocks: []
+expect:
+  status: 400
+  json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}
+---
+name: api-version checked before the stream flag
+request:
+  query: !replace {}
+  body: '{"stream":"yes","input":"hi"}'
+mocks: []
+expect:
+  status: 400
+  json: {error: {message: api-version is a required query parameter, type: invalid_request_error, code: '400'}}
+---
+name: a proxied header the service sets is replaced
+request:
+  headers:
+    X-Upstream-Extra-Data: '{"headers_to_proxy":["api-key","content-type"]}'
+    Api-Key: user
+    Content-Type: text/plain
+mocks:
+- request: {headers: {api-key: k, content-type: application/json}}
+---
+# the service sets no Authorization with a key here, so the proxied one goes as it came
+name: a proxied Authorization is sent next to the key
+request:
+  headers: {X-Upstream-Extra-Data: '{"headers_to_proxy":["Authorization"]}', Authorization: Bearer user}
+mocks:
+- request: {headers: {api-key: k, authorization: Bearer user}}

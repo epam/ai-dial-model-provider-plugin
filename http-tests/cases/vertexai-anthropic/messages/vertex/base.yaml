@@ -1,0 +1,4 @@
+# Vertex AI's own authentication: the Google token as a bearer token, no key header.
+mocks:
+- request:
+    headers: {authorization: Bearer gtok, api-key: {$absent: true}, x-api-key: {$absent: true}}

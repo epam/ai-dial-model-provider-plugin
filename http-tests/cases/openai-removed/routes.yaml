@@ -1,0 +1,41 @@
+# OpenAI adapter routes the service does not serve (chat completions, embeddings, tokenize, configuration, the
+# v1 form): each answers 404 and calls nothing. Only the Responses routes are served (suite openai-responses).
+---
+name: chat completions
+request:
+  method: POST
+  path: /openai/deployments/gpt-4o/chat/completions
+  headers: {Api-Key: dk}
+  json: {messages: [{role: user, content: hi}]}
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: embeddings
+request:
+  method: POST
+  path: /openai/deployments/ada/embeddings
+  headers: {Api-Key: dk}
+  json: {input: hi}
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: tokenize
+request:
+  method: POST
+  path: /openai/deployments/gpt-4o/tokenize
+  headers: {Api-Key: dk}
+  json: {input: [{type: request, request: {messages: [{role: user, content: hi}]}}]}
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: configuration
+request:
+  method: GET
+  path: /openai/deployments/gpt-4o/configuration
+  headers: {Api-Key: dk}
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: chat completions of the v1 form
+request:
+  method: POST
+  path: /openai/v1/chat/completions
+  headers: {Api-Key: dk}
+  json: {model: gpt-4o, messages: [{role: user, content: hi}]}
+expect: {status: 404, json: {detail: Not Found}}

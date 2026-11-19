@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/epam/ai-dial-model-provider-plugin/http-tests/test-case.schema.json",
+  "title": "Compiled HTTP test case",
+  "description": "One HTTP exchange with the server under test, the outgoing calls it must make and their mocked answers. See http-tests/README.md for the semantics.",
+  "type": "object",
+  "required": ["name", "request", "expect"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "description": "Unique among all compiled cases."},
+    "description": {"type": "string"},
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "server": {
+      "type": "object",
+      "description": "What the server under test must be started with for this case.",
+      "additionalProperties": false,
+      "properties": {
+        "env": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Settings, as environment variables."},
+        "stubs": {"type": "object", "description": "Test doubles of the server's own dependencies (credentials, clock), interpreted by the server's test adapter."}
+      }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "json_member_order": {"enum": ["any", "strict"], "description": "strict: object members must also appear in the expected order. Default any."},
+        "mock_order": {"enum": ["strict", "any"], "description": "strict: the n-th call to a mock server is the n-th mock declared for it. any: a call takes the first unused mock it matches. Default strict."}
+      }
+    },
+    "request": {"$ref": "#/$defs/request"},
+    "mocks": {"type": "array", "items": {"$ref": "#/$defs/mock"}},
+    "expect": {"$ref": "#/$defs/expect"}
+  },
+  "$defs": {
+    "method": {"type": "string", "pattern": "^[A-Z]+$"},
+    "query": {
+      "type": "object",
+      "additionalProperties": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]}
+    },
+    "headerExpectations": {
+      "type": "object",
+      "description": "Header name (case-insensitive) to its expected value: a string or a matcher. A name with * (any run of characters) is a pattern: {$absent: true} there means no header it matches is present but those named.",
+      "patternProperties": {"\\*": {"const": {"$absent": true}}},
+      "additionalProperties": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/matcher"}]}
+    },
+    "matcher": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^\\$"}
+    },
+    "request": {
+      "type": "object",
+      "required": ["method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {"$ref": "#/$defs/method"},
+        "path": {"type": "string", "pattern": "^/"},
+        "query": {"$ref": "#/$defs/query"},
+        "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+        "body": {"type": "string"},
+        "body_base64": {"type": "string"},
+        "json": {}
+      },
+      "not": {"anyOf": [
+        {"required": ["body", "json"]}, {"required": ["body", "body_base64"]}, {"required": ["json", "body_base64"]}
+      ]}
+    },
+    "mock": {
+      "type": "object",
+      "required": ["server", "request", "response"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "server": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "The mock server this call goes to; its base URL is ${mocks.<server>.url}."},
+        "request": {"$ref": "#/$defs/mockRequest"},
+        "response": {"$ref": "#/$defs/mockResponse"}
+      }
+    },
+    "mockRequest": {
+      "type": "object",
+      "required": ["method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {"$ref": "#/$defs/method"},
+        "path": {"type": "string", "pattern": "^/"},
+        "query": {"$ref": "#/$defs/query"},
+        "headers": {"$ref": "#/$defs/headerExpectations"},
+        "body": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/matcher"}]},
+        "body_base64": {"type": "string"},
+        "json": {},
+        "multipart": {"type": "array", "items": {"$ref": "#/$defs/part"}}
+      },
+      "not": {"anyOf": [
+        {"required": ["body", "json"]}, {"required": ["body", "body_base64"]}, {"required": ["body", "multipart"]},
+        {"required": ["json", "body_base64"]}, {"required": ["json", "multipart"]}, {"required": ["body_base64", "multipart"]}
+      ]}
+    },
+    "part": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "filename": {"type": "string"},
+        "content_type": {"type": "string"},
+        "body": {"type": "string"},
+        "body_base64": {"type": "string"},
+        "json": {}
+      }
+    },
+    "mockResponse": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"type": "integer", "minimum": 100, "maximum": 599},
+        "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+        "body": {"type": "string"},
+        "body_base64": {"type": "string"},
+        "json": {},
+        "sse": {
+          "type": "object",
+          "required": ["events"],
+          "additionalProperties": false,
+          "properties": {
+            "line_ending": {"enum": ["\n", "\r\n", "\r"]},
+            "events": {"type": "array", "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "event": {"type": "string"}, "id": {"type": "string"}, "retry": {"type": "integer"},
+                "data": {"type": "string"}, "json": {}, "comment": {"type": "string"}
+              }
+            }}
+          }
+        }
+      },
+      "not": {"anyOf": [
+        {"required": ["body", "json"]}, {"required": ["body", "body_base64"]}, {"required": ["body", "sse"]},
+        {"required": ["json", "body_base64"]}, {"required": ["json", "sse"]}, {"required": ["body_base64", "sse"]}
+      ]}
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {"type": "integer", "minimum": 100, "maximum": 599},
+        "headers": {"$ref": "#/$defs/headerExpectations"},
+        "body": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/matcher"}]},
+        "body_base64": {"type": "string"},
+        "json": {},
+        "sse": {"$ref": "#/$defs/sseExpectation"}
+      },
+      "not": {"anyOf": [
+        {"required": ["body", "json"]}, {"required": ["body", "body_base64"]}, {"required": ["body", "sse"]},
+        {"required": ["json", "body_base64"]}, {"required": ["json", "sse"]}, {"required": ["body_base64", "sse"]}
+      ]}
+    },
+    "sseEvent": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "event": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/matcher"}]},
+        "id": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/matcher"}]},
+        "retry": {"type": "integer"},
+        "data": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/matcher"}]},
+        "json": {}
+      },
+      "not": {"required": ["data", "json"]}
+    },
+    "sseExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "events": {"type": "array", "items": {"$ref": "#/$defs/sseEvent"}, "description": "Every event of the stream (comments are not events)."},
+        "ordered": {"type": "boolean", "description": "Default true; false compares events as a multiset."},
+        "termination": {"enum": ["complete", "incomplete_event", "truncated"], "description": "complete (default): the body ends normally, on an event boundary; incomplete_event: it ends normally after a partial event; truncated: the connection is cut before the body ends."},
+        "aggregate": {"type": "array", "items": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {"type": {"type": "string"}, "path": {"type": "string"}, "equals": {}}
+        }}
+      }
+    }
+  }
+}

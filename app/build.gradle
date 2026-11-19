@@ -1,0 +1,19 @@
+// The standalone process: the provider module behind its own HTTP server, plus logging and tracing.
+apply plugin: 'application'
+
+dependencies {
+    implementation project(':provider')
+    implementation "ch.qos.logback:logback-classic:${logback_version}"
+    implementation "net.logstash.logback:logstash-logback-encoder:${logstash_logback_version}"
+    implementation "io.vertx:vertx-opentelemetry:${vertx_version}"
+    implementation "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:${opentelemetry_version}"
+    // With its default OkHttp sender: OTLP's default protocol is gRPC (port 4317), which
+    // the JDK sender cannot speak.
+    implementation "io.opentelemetry:opentelemetry-exporter-otlp:${opentelemetry_version}"
+    implementation "io.opentelemetry:opentelemetry-exporter-logging:${opentelemetry_version}"
+}
+
+application {
+    mainClass = 'com.epam.aidial.provider.app.Main'
+    applicationName = 'model-provider'
+}

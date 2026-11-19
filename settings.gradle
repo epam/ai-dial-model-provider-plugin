@@ -1,0 +1,11 @@
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'aidial-model-provider'
+include 'provider'
+include 'app'
+// DIAL Core's plugin: compiled against com.epam.aidial:aidial-core-plugin-api from GitHub Packages (plugin/build.gradle).
+include 'plugin'
+// Live tests of the passthroughs against AWS, GCP and Azure: not part of `check` (integration-tests/README.md).
+include 'integration-tests'

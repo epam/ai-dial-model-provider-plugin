@@ -1,0 +1,84 @@
+# The DIAL cache affinity headers of a create (X-Dial-Cache-Breakpoint-Path, X-Dial-Cache-Expire-At = now + 300, now
+# being 1000): only when the client sent X-Dial-Cache-Breakpoint-Path (any value, empty too), the upstream answered 200
+# and a breakpoint was found: the last input item, else instructions.
+{% set scenarios = [
+  ["array input", '"stream":false,"input":[{"a":[1,{}]},2,3]', "prefix.body.input[2]"],
+  ["scalar input", '"input":"hi"', "prefix.body.input[0]"],
+  ["empty string input", '"input":""', "prefix.body.input[0]"],
+  ["object input", '"input":{"a":1}', "prefix.body.input[0]"],
+  ["instructions only", '"input":[],"instructions":"be brief"', "prefix.body.instructions[0]"],
+  ["input wins over instructions", '"instructions":"be brief","input":[{"role":"user","content":"q"}]', "prefix.body.input[0]"],
+  ["member order is irrelevant", '"instructions":"be brief","input":[],"stream":false', "prefix.body.instructions[0]"],
+  ["nothing to cache", '"input":null,"instructions":""', none],
+  ["no input at all", '"model":"gpt-5"', none],
+] %}
+{% for title, members, path in scenarios %}
+---
+name: {{ ("cache " ~ title) | tojson }}
+request:
+  headers: {X-Dial-Cache-Breakpoint-Path: ''}
+  body: {{ ('{' ~ members ~ '}') | tojson }}
+mocks:
+- request: {body: {{ ('{' ~ members ~ '}') | tojson }}}
+expect:
+{% if path %}
+  headers: {x-dial-cache-breakpoint-path: {{ path | tojson }}, x-dial-cache-expire-at: '1300'}
+{% else %}
+  headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}
+{% endif %}
+{% endfor %}
+---
+name: cache without the request header
+expect: {headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}}
+---
+name: cache header name is case-insensitive and its value is not read
+request: {headers: {x-dial-cache-breakpoint-path: whatever}}
+expect: {headers: {x-dial-cache-breakpoint-path: 'prefix.body.input[0]', x-dial-cache-expire-at: '1300'}}
+---
+name: cache headers replace the upstream's
+request: {headers: {X-Dial-Cache-Breakpoint-Path: ''}}
+mocks:
+- response: {headers: {Content-Type: application/json, X-Dial-Cache-Breakpoint-Path: theirs, X-Dial-Cache-Expire-At: '1'}}
+expect: {headers: {x-dial-cache-breakpoint-path: 'prefix.body.input[0]', x-dial-cache-expire-at: '1300'}}
+---
+name: cache headers only on a 200
+request: {headers: {X-Dial-Cache-Breakpoint-Path: ''}}
+mocks:
+- response: {status: 201}
+expect: {status: 201, headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}}
+---
+name: cache headers not on an upstream error
+request: {headers: {X-Dial-Cache-Breakpoint-Path: ''}}
+mocks:
+- response: {status: 400, body: bad}
+expect: {status: 400, body: bad, headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}}
+---
+name: cache headers not on input_tokens
+request:
+  path: /openai/v1/responses/input_tokens
+  headers: {X-Dial-Cache-Breakpoint-Path: ''}
+  body: '{"input":[{"role":"user","content":"a"}]}'
+mocks:
+- request: {path: /v1/responses/input_tokens, body: '{"input":[{"role":"user","content":"a"}]}'}
+expect: {headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}}
+---
+name: cache headers on a stream
+request:
+  headers: {X-Dial-Cache-Breakpoint-Path: ''}
+  body: '{"stream":true,"input":[1,2]}'
+mocks:
+- request: {body: '{"stream":true,"input":[1,2]}'}
+  response: {headers: {Content-Type: text/event-stream}, body: "data: 1\n\n"}
+expect:
+  body: "data: 1\n\n"
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.input[1]', x-dial-cache-expire-at: '1300'}
+---
+name: no cache headers on a retrieve
+request:
+  method: GET
+  path: /openai/v1/responses/r
+  headers: {X-Dial-Cache-Breakpoint-Path: ''}
+  body: !delete
+mocks:
+- request: {method: GET, path: /v1/responses/r, body: ''}
+expect: {headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}}

@@ -1,0 +1,146 @@
+# What the Responses routes refuse before any call: a body that is not a JSON object (or not UTF-8), the endpoint
+# missing or not a Responses one, the extra data, a key missing where one is required.
+---
+# Any parser's text after the prefix.
+name: invalid JSON
+request: {body: '{"model":'}
+mocks: []
+expect:
+  status: 400
+  json:
+    error:
+      message: {$regex: '^The request body is not valid JSON: .+'}
+      type: invalid_request_error
+      code: '400'
+---
+name: not a JSON object
+request: {body: '[1]'}
+mocks: []
+expect:
+  status: 400
+  json:
+    error:
+      message: The request body must be a JSON object, not an array
+      type: invalid_request_error
+      code: '400'
+---
+name: repeated member name
+request: {body: '{"model":"a","model":"b"}'}
+mocks: []
+expect:
+  status: 400
+  json:
+    error:
+      message: "The request body is not valid JSON: Duplicate field 'model'"
+      type: invalid_request_error
+      code: '400'
+---
+name: not UTF-8
+request:
+  headers: {X-Upstream-Key: !delete }
+  body_base64: eyJhIjoi/yJ9
+mocks: []
+expect:
+  status: 400
+  json:
+    error:
+      message: {$regex: '^The request body is not valid JSON: .+'}
+      type: invalid_request_error
+      code: '400'
+---
+name: no endpoint
+request:
+  headers: {X-Upstream-Endpoint: !delete }
+mocks: []
+expect:
+  status: 502
+  json:
+    error:
+      message: X-UPSTREAM-ENDPOINT header is missing in the request.
+      type: internal_server_error
+      code: '502'
+---
+name: not a Responses endpoint
+request:
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/v1/chat/completions'}
+mocks: []
+expect:
+  status: 502
+  json:
+    error: {message: Invalid upstream endpoint format, type: internal_server_error, code: '502'}
+---
+name: extra data unknown vendor
+request:
+  headers: {X-Upstream-Key: !delete , X-Upstream-Extra-Data: '{"vendor":"x"}'}
+mocks: []
+expect:
+  status: 502
+  json:
+    error:
+      message: "X-Upstream-Extra-Data header doesn't contain the expected JSON object"
+      type: internal_server_error
+      code: '502'
+---
+name: vLLM without a key
+server: {env: {VLLM_DEPLOYMENTS: 'a, vllm-m'}}
+request:
+  headers: {X-Upstream-Key: !delete }
+  body: '{"model":"vllm-m"}'
+mocks: []
+expect:
+  status: 502
+  json:
+    error: {message: X-UPSTREAM-KEY header is missing in the request., type: internal_server_error, code: '502'}
+---
+name: OpenAI platform without a key
+request:
+  headers: {X-Upstream-Key: !delete , X-Upstream-Endpoint: 'https://api.openai.com/v1/responses'}
+mocks: []
+expect: {status: 502, body: !delete }
+---
+name: Alibaba Cloud without a key
+request:
+  headers: {X-Upstream-Key: !delete , X-Upstream-Extra-Data: '{"vendor":"alibaba-cloud"}'}
+mocks: []
+expect: {status: 502, body: !delete }
+---
+# The upstream's configuration is checked before the body, so the stream flag is read once the upstream is made.
+name: stream not a bool without an endpoint
+request:
+  headers: {X-Upstream-Endpoint: !delete }
+  body: '{"stream":1}'
+mocks: []
+expect:
+  status: 502
+  json:
+    error:
+      message: X-UPSTREAM-ENDPOINT header is missing in the request.
+      type: internal_server_error
+      code: '502'
+---
+name: no endpoint and an invalid body
+request:
+  headers: {X-Upstream-Endpoint: !delete }
+  body: '{"model":'
+mocks: []
+expect:
+  status: 502
+  json:
+    error:
+      message: X-UPSTREAM-ENDPOINT header is missing in the request.
+      type: internal_server_error
+      code: '502'
+---
+# ... and the body's 400 comes before the credentials: no 502 of a vendor that needs a key.
+name: invalid body and no key on a vendor that needs one
+request:
+  headers: {X-Upstream-Key: !delete , X-Upstream-Endpoint: 'https://api.openai.com/v1/responses'}
+  body: '{"model":'
+mocks: []
+expect:
+  status: 400
+  json:
+    error:
+      message: {$regex: '^The request body is not valid JSON: .+'}
+      type: invalid_request_error
+      code: '400'

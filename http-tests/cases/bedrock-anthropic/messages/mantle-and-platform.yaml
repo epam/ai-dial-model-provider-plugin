@@ -1,0 +1,77 @@
+# Bedrock Mantle ("mantle" client): the Messages API as received, signed for bedrock-mantle; and the platform, which a
+# key selects over everything else.
+---
+name: mantle messages
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle"}'}
+mocks:
+- request:
+    path: /mantle/v1/messages
+    headers:
+      authorization: {$regex: '^AWS4-HMAC-SHA256 Credential=AKID/\d{8}/us-east-1/bedrock-mantle/aws4_request, '}
+      anthropic-version: '2023-06-01'
+    body: '{"model":"anthropic.claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: mantle count_tokens
+request:
+  path: /anthropic/v1/messages/count_tokens
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle"}'}
+mocks:
+- request:
+    path: /mantle/v1/messages/count_tokens
+    body: '{"model":"anthropic.claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+  response: {body: '{"input_tokens":7}'}
+expect: {body: '{"input_tokens":7}'}
+---
+name: mantle client from the default setting
+server: {env: {AWS_CLAUDE_DEFAULT_CLIENT: mantle}}
+mocks:
+- request:
+    path: /mantle/v1/messages
+    body: '{"model":"anthropic.claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: mantle region and static keys from extra data
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle","region":"eu-west-1","aws_access_key_id":"AKID2","aws_secret_access_key":"S2"}'}
+mocks:
+- request:
+    path: /mantle/v1/messages
+    headers: {authorization: {$regex: '^AWS4-HMAC-SHA256 Credential=AKID2/\d{8}/eu-west-1/bedrock-mantle/aws4_request, '}}
+    body: '{"model":"anthropic.claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: mantle body untouched byte for byte
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle"}'}
+  body: '{ "model" : "anthropic.claude-x", "messages":[ {"role":"user","content":"hi é"} ] }'
+mocks:
+- request:
+    path: /mantle/v1/messages
+    body: '{ "model" : "anthropic.claude-x", "messages":[ {"role":"user","content":"hi é"} ] }'
+---
+name: platform key
+request:
+  headers: {X-Upstream-Key: k}
+mocks:
+- request:
+    path: /platform/v1/messages
+    headers: {x-api-key: k, authorization: {$absent: true}, x-amz-date: {$absent: true}, anthropic-version: '2023-06-01'}
+    body: '{"model":"anthropic.claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: platform key wins over extra data
+request:
+  headers: {X-Upstream-Key: k, X-Upstream-Extra-Data: '{"claude_client":"mantle"}'}
+mocks:
+- request:
+    path: /platform/v1/messages
+    headers: {x-api-key: k, authorization: {$absent: true}}
+    body: '{"model":"anthropic.claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: platform count_tokens
+request:
+  path: /anthropic/v1/messages/count_tokens
+  headers: {X-Upstream-Key: k}
+mocks:
+- request:
+    path: /platform/v1/messages/count_tokens
+    headers: {x-api-key: k, authorization: {$absent: true}}
+    body: '{"model":"anthropic.claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'

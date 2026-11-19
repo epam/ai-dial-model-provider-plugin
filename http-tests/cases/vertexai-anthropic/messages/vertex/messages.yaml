@@ -1,0 +1,126 @@
+# Claude on Vertex AI: URL (region, project, model), body shaping, auth, forwarded headers, count_tokens.
+---
+name: vertex messages
+---
+name: vertex count_tokens
+request:
+  path: /anthropic/v1/messages/count_tokens
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/count-tokens:rawPredict
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}],"anthropic_version":"vertex-2023-10-16"}'
+  response: {body: '{"input_tokens":7}'}
+expect: {body: '{"input_tokens":7}'}
+---
+name: vertex region and project from extra data
+request:
+  headers: {X-Upstream-Extra-Data: '{"region":"global","project":"q"}'}
+mocks:
+- request: {path: /vertex/projects/q/locations/global/publishers/anthropic/models/claude-x:rawPredict}
+---
+name: vertex model is one escaped path segment
+request:
+  body: '{"model":"claude@2025/../x?y","messages":[]}'
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/claude@2025%2F..%2Fx%3Fy:rawPredict
+    body: '{"messages":[],"anthropic_version":"vertex-2023-10-16"}'
+---
+name: vertex client anthropic_version kept
+request:
+  body: '{"model":"claude-x","anthropic_version":"vertex-2024-01-01","messages":[]}'
+mocks:
+- request: {body: '{"anthropic_version":"vertex-2024-01-01","messages":[]}'}
+---
+name: vertex body keeps the prompt bytes
+request:
+  body: '{"model":"claude-x","max_tokens":5,"messages":[ {"role":"user","content":[{"type":"text","text":"hi é"}]} ]}'
+mocks:
+- request:
+    body: '{"max_tokens":5,"messages":[ {"role":"user","content":[{"type":"text","text":"hi é"}]} ],"anthropic_version":"vertex-2023-10-16"}'
+---
+name: vertex forwards only anthropic headers
+request:
+  headers:
+    X-Other: dropped
+    Anthropic-Foo: '1'
+    Accept-Encoding: gzip
+    Anthropic-Version: '2023-01-01'
+mocks:
+- request:
+    headers:
+      anthropic-foo: '1'
+      anthropic-version: '2023-01-01'
+      accept-encoding: gzip
+      x-other: {$absent: true}
+      x-upstream-*: {$absent: true}
+---
+name: vertex sends no anthropic-version by default
+mocks:
+- request: {headers: {anthropic-version: {$absent: true}}}
+---
+name: vertex client content type replaced
+request:
+  headers: {Content-Type: text/plain}
+mocks:
+- request: {headers: {content-type: application/json, accept: application/json}}
+---
+name: vertex gzip relayed undecoded
+request:
+  headers: {Accept-Encoding: gzip}
+mocks:
+- request: {headers: {accept-encoding: gzip}}
+  response:
+    headers: {Content-Type: application/json, Content-Encoding: gzip}
+    # {"id":"m"} gzipped
+    body_base64: H4sIAAAAAAAAA6tWykxRslLKzFPSUcpNLS5OTE8FAD/NtmUNAAAA
+expect:
+  headers: {content-encoding: gzip}
+  body: !delete
+  body_base64: H4sIAAAAAAAAA6tWykxRslLKzFPSUcpNLS5OTE8FAD/NtmUNAAAA
+---
+name: vertex upstream response headers filtered
+mocks:
+- response:
+    headers: {Content-Type: application/json, X-A: '1', Server: gfe, Connection: close}
+expect: {headers: {x-a: '1', server: {$absent: true}}}
+---
+name: vertex cache affinity headers
+request:
+  body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"1h"}}]}]}'
+mocks:
+- request:
+    body: '{"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"1h"}}]}],"anthropic_version":"vertex-2023-10-16"}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.messages[0].content[0]', x-dial-cache-expire-at: '4600'}
+---
+name: vertex automatic caching takes the last block
+request:
+  body: '{"model":"claude-x","cache_control":{"type":"ephemeral"},"system":"s","messages":[{"role":"user","content":[{"type":"text","text":"a"}]},{"role":"user","content":"b"}]}'
+mocks:
+- request:
+    body: '{"cache_control":{"type":"ephemeral"},"system":"s","messages":[{"role":"user","content":[{"type":"text","text":"a"}]},{"role":"user","content":"b"}],"anthropic_version":"vertex-2023-10-16"}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.messages[1].content[0]', x-dial-cache-expire-at: '1300'}
+---
+name: vertex no cache headers without a marker
+expect: {headers: {x-dial-*: {$absent: true}}}
+---
+name: vertex no cache headers on count_tokens
+request:
+  path: /anthropic/v1/messages/count_tokens
+  body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}]}'
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/count-tokens:rawPredict
+    body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}],"anthropic_version":"vertex-2023-10-16"}'
+expect: {headers: {x-dial-*: {$absent: true}}}
+---
+name: vertex no cache headers on a 201
+request:
+  body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}]}'
+mocks:
+- request:
+    body: '{"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}],"anthropic_version":"vertex-2023-10-16"}'
+  response: {status: 201}
+expect: {status: 201, headers: {x-dial-*: {$absent: true}}}

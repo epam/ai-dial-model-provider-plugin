@@ -1,0 +1,29 @@
+# What every case of this suite inherits (http-tests/README.md, bases): the vertexai adapter's Anthropic Messages API
+# routes. The default exchange is Vertex AI: a non-streaming request to claude-x in us-east5, project p, the Google
+# token gtok; the model moves into the URL, anthropic_version is added, the answer is relayed as it came.
+server:
+  env:
+    ANTHROPIC_VERTEX_BASE_URL: '${mocks.upstream.url}/vertex'
+    GCP_PROJECT_ID: p
+    GCP_DEFAULT_REGION: us-east5
+  stubs: {google_access_token: gtok, now_seconds: 1000}
+request:
+  method: POST
+  path: /anthropic/v1/messages
+  headers: {Content-Type: application/json}
+  body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+mocks:
+- server: upstream
+  request:
+    method: POST
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/claude-x:rawPredict
+    headers: {content-type: application/json, accept: application/json}
+    body: '{"max_tokens":5,"messages":[{"role":"user","content":"hi"}],"anthropic_version":"vertex-2023-10-16"}'
+  response:
+    status: 200
+    headers: {Content-Type: application/json}
+    body: '{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"Hello"}]}'
+expect:
+  status: 200
+  headers: {content-type: application/json}
+  body: '{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"Hello"}]}'

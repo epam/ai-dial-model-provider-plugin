@@ -1,0 +1,27 @@
+# The openai adapter needs an endpoint with /v1/messages in it, and a key unless the upstream is Azure Foundry (a
+# host with "azure" in it and a base ending /anthropic, which takes an Azure AD token). Anything else is a 502 api_error
+# before the body is read, with nothing sent; a token that cannot be had is a 401.
+---
+name: no endpoint
+request: {headers: {X-Upstream-Endpoint: !delete }, body: '{"model":'}
+expect: {json: {error: {message: X-UPSTREAM-ENDPOINT header is missing in the request.}}}
+---
+name: empty endpoint
+request: {headers: {X-Upstream-Endpoint: ''}}
+expect: {json: {error: {message: Invalid upstream endpoint format}}}
+---
+name: endpoint without /v1/messages
+request: {headers: {X-Upstream-Endpoint: 'http://h.invalid/messages'}}
+expect: {json: {error: {message: Invalid upstream endpoint format}}}
+---
+name: endpoint without /v1/messages and without a key
+request: {headers: {X-Upstream-Endpoint: 'http://h.invalid/messages', X-Upstream-Key: !delete }}
+expect: {json: {error: {message: Invalid upstream endpoint format}}}
+---
+name: provider that is not Foundry needs a key
+request: {headers: {X-Upstream-Key: !delete }}
+expect: {json: {error: {message: X-UPSTREAM-KEY header is missing in the request.}}}
+---
+name: Azure host without /anthropic is not Foundry and needs a key
+request: {headers: {X-Upstream-Endpoint: 'https://r.openai.azure.com/v1/messages', X-Upstream-Key: !delete }}
+expect: {json: {error: {message: X-UPSTREAM-KEY header is missing in the request.}}}

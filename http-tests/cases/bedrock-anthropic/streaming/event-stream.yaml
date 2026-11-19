@@ -1,0 +1,163 @@
+# Bedrock's event stream decoded to SSE, and what happens when it goes wrong half way: the events already written reach
+# the client, then the response is cut without a clean end (no error event, the 200 already sent).
+---
+name: invoke stream
+---
+name: invoke stream status and headers
+mocks:
+- response:
+    status: 201
+    headers: {Content-Type: application/json, Content-Encoding: gzip, X-Amzn-Requestid: r1}
+expect:
+  status: 201
+  headers: {content-type: text/event-stream, content-encoding: {$absent: true}, content-length: {$absent: true}, x-amzn-requestid: r1}
+---
+name: invoke stream carries the cache affinity headers
+request:
+  body: '{"model":"anthropic.claude-x","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"1h"}}]}]}'
+mocks:
+- request:
+    body: '{"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"1h"}}]}],"anthropic_version":"bedrock-2023-05-31"}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.messages[0].content[0]', x-dial-cache-expire-at: '4600'}
+---
+name: invoke stream skips events that are not chunks
+mocks:
+- response: {body_base64: "$base64('/bedrock-anthropic/_files/stream-metadata-skipped.bin')"}
+expect:
+  sse:
+    events: !replace
+    - {event: message_start, json: {$partial: {type: message_start}}}
+    - {event: message_stop, json: {type: message_stop}}
+    aggregate: !delete
+---
+# a chunk whose bytes are empty is an event with empty data, named completion (bedrock-event-stream "Chunk payload")
+name: invoke stream writes an empty completion event for an empty chunk
+mocks:
+- response: {body_base64: "$base64('/bedrock-anthropic/_files/stream-empty-chunk.bin')"}
+expect:
+  sse:
+    events: !replace
+    - {event: message_start, json: {$partial: {type: message_start}}}
+    - {event: completion, data: ''}
+    - {event: message_stop, json: {type: message_stop}}
+    aggregate: !delete
+---
+name: invoke stream with an empty body
+mocks:
+- response: {body_base64: ''}
+expect:
+  status: 200
+  sse: {events: [], termination: complete, aggregate: !delete }
+---
+name: throttling exception mid-stream cuts the response
+mocks:
+- response: {body_base64: "$base64('/bedrock-anthropic/_files/stream-throttled.bin')"}
+expect:
+  status: 200
+  sse:
+    events: !replace
+    - {event: message_start, json: {$partial: {type: message_start}}}
+    - {event: content_block_start, json: {$partial: {type: content_block_start}}}
+    - {event: content_block_delta, json: {$partial: {delta: {$partial: {text: Hel}}}}}
+    termination: truncated
+    aggregate: !delete
+---
+name: bad prelude checksum cuts the response
+mocks:
+- response: {body_base64: "$base64('/bedrock-anthropic/_files/stream-bad-crc.bin')"}
+expect:
+  status: 200
+  sse:
+    events: !replace [{event: message_start, json: {$partial: {type: message_start}}}]
+    termination: truncated
+    aggregate: !delete
+---
+name: bad message checksum cuts the response
+mocks:
+- response: {body_base64: "$base64('/bedrock-anthropic/_files/stream-bad-message-crc.bin')"}
+expect:
+  status: 200
+  sse:
+    events: !replace [{event: message_start, json: {$partial: {type: message_start}}}]
+    termination: truncated
+    aggregate: !delete
+---
+name: message cut inside its bytes cuts the response
+mocks:
+- response: {body_base64: "$base64('/bedrock-anthropic/_files/stream-truncated.bin')"}
+expect:
+  status: 200
+  sse:
+    events: !replace [{event: message_start, json: {$partial: {type: message_start}}}]
+    termination: truncated
+    aggregate: !delete
+---
+name: chunk whose payload is not base64 cuts the response
+mocks:
+- response: {body_base64: "$base64('/bedrock-anthropic/_files/stream-bad-payload.bin')"}
+expect:
+  status: 200
+  sse:
+    events: !replace [{event: message_start, json: {$partial: {type: message_start}}}]
+    termination: truncated
+    aggregate: !delete
+---
+name: mantle stream is relayed as SSE
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle"}'}
+  body: '{"model":"anthropic.claude-x","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+mocks:
+- request:
+    path: /mantle/v1/messages
+    body: '{"model":"anthropic.claude-x","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+  response:
+    headers: {Content-Type: text/event-stream}
+    body_base64: !delete
+    sse: !replace {events: !ref /_lib/anthropic-stream.yaml:events}
+---
+name: mantle stream relays an error event the model sent mid-stream
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle"}'}
+mocks:
+- request:
+    path: /mantle/v1/messages
+    body: '{"model":"anthropic.claude-x","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+  response:
+    headers: {Content-Type: text/event-stream}
+    body_base64: !delete
+    sse: !replace
+      events:
+      - {event: message_start, json: {type: message_start, message: {id: msg_1}}}
+      - {event: error, json: !ref /_lib/anthropic-stream.yaml:overloaded}
+expect:
+  sse: !replace
+    events:
+    - {event: message_start, json: {type: message_start, message: {id: msg_1}}}
+    - {event: error, json: {type: error, error: {type: overloaded_error, message: Overloaded}}}
+---
+name: platform stream
+request:
+  headers: {X-Upstream-Key: k}
+mocks:
+- request:
+    path: /platform/v1/messages
+    headers: {x-api-key: k}
+    body: '{"model":"anthropic.claude-x","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+  response:
+    headers: {Content-Type: text/event-stream}
+    body_base64: !delete
+    sse: !replace {events: !ref /_lib/anthropic-stream.yaml:events}
+---
+name: invoke stream answered with an error is not decoded
+mocks:
+- response:
+    status: 400
+    headers: {Content-Type: application/json}
+    body_base64: !delete
+    json: {message: 'ValidationException: bad'}
+expect:
+  status: 400
+  headers: {content-type: application/json}
+  sse: !delete
+  json: {message: 'ValidationException: bad'}

@@ -1,0 +1,33 @@
+# What every case of this suite inherits (http-tests/README.md, bases): the openai adapter's Anthropic Messages API
+# routes. The upstream is whatever X-Upstream-Endpoint names (here a Messages API provider on the mock, which is not
+# Azure Foundry, so the key goes in X-Api-Key only), the body is forwarded as received and the answer as it came.
+server: {stubs: {now_seconds: 1000}}
+request:
+  method: POST
+  path: /anthropic/v1/messages
+  headers:
+    Content-Type: application/json
+    X-Upstream-Endpoint: '${mocks.upstream.url}/provider/v1/messages'
+    X-Upstream-Key: k
+  body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+mocks:
+- server: upstream
+  request:
+    method: POST
+    path: /provider/v1/messages
+    headers:
+      x-api-key: k
+      api-key: {$absent: true}
+      authorization: {$absent: true}
+      content-type: application/json
+      accept: application/json
+      anthropic-version: '2023-06-01'
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+  response:
+    status: 200
+    headers: {Content-Type: application/json}
+    body: '{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"Hello"}]}'
+expect:
+  status: 200
+  headers: {content-type: application/json}
+  body: '{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"Hello"}]}'

@@ -1,0 +1,64 @@
+# What Bedrock does not implement is taken out of anthropic-beta, on the invoke-model API and Mantle alike: oauth,
+# redact-thinking, thinking-token-count, prompt-caching-scope, claude-code, advanced-tool-use and advisor-tool. The
+# invoke-model API also carries the kept flags in the body as anthropic_beta; the platform keeps every flag.
+{% set flags = [
+  "oauth-2025-04-20", "redact-thinking-2026-02-12", "thinking-token-count-2026-05-13",
+  "prompt-caching-scope-2026-01-05", "claude-code-20250219", "advanced-tool-use-2025-11-20",
+  "advisor-tool-2026-03-01", "context-1m-2025-08-07", "interleaved-thinking-2025-05-14",
+] %}
+{% set dropped = flags[:7] %}
+{% set clouds = {
+  "invoke": {
+    "drops": true, "headers": {}, "path": "/bedrock/model/anthropic.claude-x/invoke", "invoke": true,
+  },
+  "mantle": {
+    "drops": true, "headers": {"X-Upstream-Extra-Data": '{"claude_client":"mantle"}'}, "path": "/mantle/v1/messages", "invoke": false,
+  },
+  "platform": {
+    "drops": false, "headers": {"X-Upstream-Key": "k"}, "path": "/platform/v1/messages", "invoke": false,
+  },
+} %}
+{% for cloud, c in clouds.items() %}
+{% for flag in flags %}
+{% set gone = c.drops and flag in dropped %}
+---
+name: {{ (cloud ~ (" drops " if gone else " keeps ") ~ flag) | tojson }}
+request:
+  headers: {{ dict(c.headers, **{"Anthropic-Beta": flag}) | tojson }}
+  body: '{"model":"anthropic.claude-x","messages":[]}'
+mocks:
+- request:
+    path: {{ c.path | tojson }}
+    headers: {anthropic-beta: {{ ({"$absent": true} if gone else flag) | tojson }}}
+    body: {{ ('{"messages":[],"anthropic_version":"bedrock-2023-05-31"' ~ ('' if gone else ',"anthropic_beta":["' ~ flag ~ '"]') ~ '}' if c.invoke else '{"model":"anthropic.claude-x","messages":[]}') | tojson }}
+{% endfor %}
+---
+name: {{ (cloud ~ " every flag at once") | tojson }}
+request:
+  headers: {{ dict(c.headers, **{"Anthropic-Beta": flags | join(",")}) | tojson }}
+  body: '{"model":"anthropic.claude-x","messages":[]}'
+mocks:
+- request:
+    path: {{ c.path | tojson }}
+    headers: {anthropic-beta: {{ ((flags | reject("in", dropped if c.drops else []) | join(",")) | tojson) }}}
+    body: {{ ('{"messages":[],"anthropic_version":"bedrock-2023-05-31","anthropic_beta":' ~ ('["' ~ (flags | reject("in", dropped) | join('","')) ~ '"]') ~ '}' if c.invoke else '{"model":"anthropic.claude-x","messages":[]}') | tojson }}
+{% endfor %}
+---
+name: invoke with only unsupported flags sends no beta anywhere
+request:
+  headers: {Anthropic-Beta: 'claude-code-20250219,oauth-2025-04-20'}
+  body: '{"model":"anthropic.claude-x","messages":[]}'
+mocks:
+- request:
+    headers: {anthropic-beta: {$absent: true}}
+    body: '{"messages":[],"anthropic_version":"bedrock-2023-05-31"}'
+---
+name: mantle beta header is one trimmed value
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle"}', Anthropic-Beta: 'a-1 ,, claude-code-20250219, b-2 ,c-3'}
+  body: '{"model":"anthropic.claude-x","messages":[]}'
+mocks:
+- request:
+    path: /mantle/v1/messages
+    headers: {anthropic-beta: 'a-1,b-2,c-3'}
+    body: '{"model":"anthropic.claude-x","messages":[]}'

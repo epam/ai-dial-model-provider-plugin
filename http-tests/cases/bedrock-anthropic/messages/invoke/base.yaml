@@ -1,0 +1,4 @@
+# The invoke-model API is signed for the service bedrock; the region is the one of the extra data or the setting.
+mocks:
+- request:
+    headers: {authorization: {$regex: '^AWS4-HMAC-SHA256 Credential=AKID/\d{8}/us-east-1/bedrock/aws4_request, '}}

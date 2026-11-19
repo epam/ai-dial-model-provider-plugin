@@ -1,0 +1,6 @@
+# A request without X-Upstream-Key: the Azure AD token (stubbed as aad) is the bearer token, on any v1 host.
+server: {stubs: {azure_ad_token: aad}}
+request:
+  headers: {X-Upstream-Key: !delete }
+mocks:
+- request: {headers: {authorization: Bearer aad, api-key: {$absent: true}}}

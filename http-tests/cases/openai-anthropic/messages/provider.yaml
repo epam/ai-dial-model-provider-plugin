@@ -1,0 +1,76 @@
+# Any Messages API provider named by X-Upstream-Endpoint (the part before /v1/messages is the base).
+---
+name: provider messages
+---
+name: provider count_tokens
+request: {path: /anthropic/v1/messages/count_tokens}
+mocks:
+- request: {path: /provider/v1/messages/count_tokens}
+  response: {body: '{"input_tokens":7}'}
+expect: {body: '{"input_tokens":7}'}
+---
+name: provider endpoint with a trailing path and slash
+request:
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/provider/v1/messages/extra'}
+---
+name: provider body untouched byte for byte
+request:
+  body: '{ "model" : "claude-x", "messages":[ {"role":"user","content":[{"type":"text","text":"hi é"}]} ] }'
+mocks:
+- request: {body: '{ "model" : "claude-x", "messages":[ {"role":"user","content":[{"type":"text","text":"hi é"}]} ] }'}
+---
+name: provider client anthropic-version and beta kept
+request:
+  headers: {Anthropic-Version: '2023-01-01', Anthropic-Beta: 'advisor-tool-2026-03-01, claude-code-20250219'}
+mocks:
+- request: {headers: {anthropic-version: '2023-01-01', anthropic-beta: 'advisor-tool-2026-03-01, claude-code-20250219'}}
+---
+name: provider empty anthropic-version forwarded
+request:
+  headers: {Anthropic-Version: ''}
+mocks:
+- request: {headers: {anthropic-version: ''}}
+---
+name: provider keeps every server tool
+request:
+  body: '{"model":"claude-x","tools":[{"type":"advisor_20260301","name":"advisor"},{"type":"web_search_20250305","name":"web_search"}],"messages":[]}'
+mocks:
+- request: {body: '{"model":"claude-x","tools":[{"type":"advisor_20260301","name":"advisor"},{"type":"web_search_20250305","name":"web_search"}],"messages":[]}'}
+---
+name: provider forwards only anthropic headers
+request:
+  headers: {X-Other: dropped, Anthropic-Foo: '1', Accept-Encoding: gzip}
+mocks:
+- request: {headers: {anthropic-foo: '1', accept-encoding: gzip, x-other: {$absent: true}, x-upstream-*: {$absent: true}}}
+---
+name: provider client content type replaced
+request:
+  headers: {Content-Type: text/plain}
+---
+name: provider empty key sends no key header
+request:
+  headers: {X-Upstream-Key: ''}
+mocks:
+- request: {headers: {x-api-key: {$absent: true}, api-key: {$absent: true}}}
+---
+name: provider cache affinity headers
+request:
+  body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"30m"}}]}]}'
+mocks:
+- request: {body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"30m"}}]}]}'}
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.messages[0].content[0]', x-dial-cache-expire-at: '2800'}
+---
+name: provider gzip relayed undecoded
+request:
+  headers: {Accept-Encoding: gzip}
+mocks:
+- request: {headers: {accept-encoding: gzip}}
+  response:
+    headers: {Content-Type: application/json, Content-Encoding: gzip}
+    body: !delete
+    body_base64: H4sIAAAAAAAAA6tWykxRslLKzFPSUcpNLS5OTE8FAD/NtmUNAAAA
+expect:
+  headers: {content-encoding: gzip}
+  body: !delete
+  body_base64: H4sIAAAAAAAAA6tWykxRslLKzFPSUcpNLS5OTE8FAD/NtmUNAAAA

@@ -1,0 +1,19 @@
+# The 400s the service answers itself for a request body, before anything is signed or sent to Bedrock
+# (_lib/anthropic-validation.j2).
+{% import "_lib/anthropic-validation.j2" as v %}
+{# the invoke-model API has no count_tokens: Mantle is asked for it #}
+{{ v.cases({"X-Upstream-Extra-Data": '{"claude_client":"mantle"}'}) }}
+---
+name: model that cannot be a path segment
+request: {body: '{"model":"a\ud800b","messages":[]}'}
+mocks: []
+expect:
+  status: 400
+  json:
+    type: error
+    error: {type: invalid_request_error, message: 'model: Input should be valid Unicode text'}
+---
+name: a BOM before the object is skipped
+request: {body: !delete , body_base64: 77u/eyJtb2RlbCI6ImFudGhyb3BpYy5jbGF1ZGUteCIsIm1lc3NhZ2VzIjpbXX0=}
+mocks:
+- request: {body: '{"messages":[],"anthropic_version":"bedrock-2023-05-31"}'}

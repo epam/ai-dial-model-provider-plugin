@@ -1,0 +1,37 @@
+# X-Upstream-Extra-Data that is not accepted: a 502 before any call, with one of two messages that name no member
+# A value that is not JSON gets the first, a JSON value of the wrong shape the second.
+{% set notjson = "X-Upstream-Extra-Data header doesn't contain valid JSON" %}
+{% set shape = "X-Upstream-Extra-Data header doesn't contain the expected JSON object" %}
+{% for title, value, message in [
+  ["array", "[]", shape], ["null", "null", shape], ["number", "1", shape], ["empty", "", shape],
+  ["truncated", "{\"a\":", notjson],
+  ["trailing characters", "{\"headers_to_proxy\":[\"a\"]} x", notjson],
+  ["headers_to_proxy a string", "{\"headers_to_proxy\":\"x\"}", shape],
+  ["headers_to_proxy element not a string", "{\"headers_to_proxy\":[\"a\",2]}", shape],
+  ["aws member not a string", "{\"aws_session_token\":{}}", shape],
+  ["vendor a number", "{\"vendor\":1}", shape],
+  ["vendor in another case", "{\"vendor\":\"Alibaba-Cloud\"}", shape],
+  ["vendor unknown", "{\"vendor\":\"x\"}", shape],
+  ["members out of order", "{\"aws_access_key_id\":1,\"vendor\":\"x\"}", shape],
+  ["vendor repeated", "{\"vendor\":\"alibaba-cloud\",\"vendor\":\"x\"}", shape],
+] %}
+---
+name: {{ ("extra data " ~ title) | tojson }}
+request: {headers: {X-Upstream-Extra-Data: {{ value | tojson }}}}
+mocks: []
+expect:
+  status: 502
+  headers: {content-type: application/json}
+  json: {error: {message: {{ message | tojson }}, type: internal_server_error, code: '502'}}
+{% endfor %}
+{% for title, value in [
+  ["unknown member", "{\"x\":1}"],
+  ["headers_to_proxy null", "{\"headers_to_proxy\":null}"],
+  ["null aws member", "{\"aws_session_token\":null}"],
+  ["repeated member with the same valid value", "{\"vendor\":\"alibaba-cloud\",\"vendor\":\"alibaba-cloud\"}"],
+  ["repeated headers_to_proxy, the last one counts", "{\"headers_to_proxy\":[\"a\"],\"headers_to_proxy\":[\"X-Trace\"]}"],
+] %}
+---
+name: {{ ("extra data accepted: " ~ title) | tojson }}
+request: {headers: {X-Upstream-Extra-Data: {{ value | tojson }}}}
+{% endfor %}

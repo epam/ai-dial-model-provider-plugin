@@ -1,0 +1,4 @@
+{
+  "resource": "https://<resource>.cognitiveservices.azure.com",
+  "key": "<an API key of the resource>"
+}

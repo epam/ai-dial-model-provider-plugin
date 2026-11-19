@@ -1,0 +1,51 @@
+# How an upstream's error answer reaches the client on each upstream the bedrock adapter picks, streaming or not: the
+# status and body as received, only Retry-After, Retry-After-Ms, Content-Type and Content-Encoding of the headers.
+# A streaming invoke-model error is never decoded as an event stream.
+{% set upstreams = {
+  "invoke": {
+    "env": {}, "headers": {},
+    "plain": "/bedrock/model/anthropic.claude-x/invoke",
+    "stream": "/bedrock/model/anthropic.claude-x/invoke-with-response-stream",
+  },
+  "mantle": {
+    "env": {}, "headers": {"X-Upstream-Extra-Data": '{"claude_client":"mantle"}'},
+    "plain": "/mantle/v1/messages", "stream": "/mantle/v1/messages",
+  },
+  "platform": {
+    "env": {}, "headers": {"X-Upstream-Key": "k"},
+    "plain": "/platform/v1/messages", "stream": "/platform/v1/messages",
+  },
+} %}
+{% set errors = [
+  [400, "invalid_request_error", "max_tokens: Field required"],
+  [401, "authentication_error", "invalid x-api-key"],
+  [403, "permission_error", "forbidden"],
+  [404, "not_found_error", "model: claude-x"],
+  [429, "rate_limit_error", "slow down"],
+  [500, "api_error", "Internal server error"],
+  [529, "overloaded_error", "Overloaded"],
+] %}
+{% for cloud, u in upstreams.items() %}
+{% for status, kind, message in errors %}
+{% for stream in [false, true] %}
+{% set body = {"type": "error", "error": {"type": kind, "message": message}} %}
+---
+name: {{ (cloud ~ " " ~ status ~ (" streaming" if stream else "")) | tojson }}
+request:
+  headers: {{ u.headers | tojson }}
+  body: {{ ('{"model":"anthropic.claude-x",' ~ ('"stream":true,' if stream else '') ~ '"messages":[]}') | tojson }}
+mocks:
+- request:
+    path: {{ (u.stream if stream else u.plain) | tojson }}
+    body: !delete
+  response:
+    status: {{ status }}
+    headers: {Content-Type: application/json, X-Junk: '1', X-Amzn-Errortype: Whatever}
+    json: {{ body | tojson }}
+expect:
+  status: {{ status }}
+  headers: {content-type: application/json, x-junk: {$absent: true}, x-amzn-errortype: {$absent: true}, x-dial-*: {$absent: true}}
+  json: {{ body | tojson }}
+{% endfor %}
+{% endfor %}
+{% endfor %}

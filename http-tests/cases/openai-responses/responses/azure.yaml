@@ -1,0 +1,44 @@
+# An Azure OpenAI endpoint (/openai/deployments/<name>/responses): the last api-version kept with the client's query,
+# the key as Api-Key, an Azure AD token without one; api-version required.
+---
+name: azure versioned
+request:
+  path: /openai/responses
+  query: {api-version: [a, '2025-04-01-preview'], q: x}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'}
+mocks:
+- request:
+    path: /openai/responses
+    query: {api-version: '2025-04-01-preview', q: x}
+    headers: {api-key: k, authorization: {$absent: true}}
+---
+name: azure ad token
+server: {stubs: {azure_ad_token: aad-tok}}
+request:
+  path: /openai/responses
+  query: {api-version: v}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses', X-Upstream-Key: !delete }
+mocks:
+- request:
+    path: /openai/responses
+    query: {api-version: v}
+    headers: {authorization: Bearer aad-tok}
+---
+name: azure without api-version
+request:
+  path: /openai/responses
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'}
+mocks: []
+expect:
+  status: 400
+  body: '{"error":{"message":"api-version is a required query parameter","type":"invalid_request_error","code":"400"}}'
+---
+# The api-version is a check of the request: it comes before the credentials, so no Azure AD token is asked for.
+name: azure without api-version and without a key
+request:
+  path: /openai/responses
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses', X-Upstream-Key: !delete }
+mocks: []
+expect:
+  status: 400
+  body: '{"error":{"message":"api-version is a required query parameter","type":"invalid_request_error","code":"400"}}'

@@ -1,0 +1,105 @@
+# Success and failure answers of every route: status, filtered headers and body as the upstream sent them, and the
+# answers the service itself gives when it cannot reach the upstream.
+---
+name: success headers relayed without Content-Length
+mocks:
+- response:
+    headers: {Content-Type: application/json, X-Request-Id: r1}
+    body: '{"id":"resp_1"}'
+expect: {status: 200, headers: {x-request-id: r1, content-type: application/json}, body: '{"id":"resp_1"}'}
+---
+name: other 2xx status relayed
+mocks:
+- response: {status: 201, body: '{"id":"resp_1"}'}
+expect: {status: 201, body: '{"id":"resp_1"}'}
+---
+name: delete answered 204
+request: {method: DELETE, path: /openai/v1/responses/r, body: !delete }
+mocks:
+- request: {method: DELETE, path: /v1/responses/r, body: ''}
+  response: {status: 204, headers: {X-Request-Id: r1}, body: !delete }
+expect: {status: 204, headers: {x-request-id: r1}, body: !delete }
+---
+name: cancel answered 201
+request: {path: /openai/v1/responses/r/cancel, body: !delete }
+mocks:
+- request: {path: /v1/responses/r/cancel, body: ''}
+  response: {status: 201, headers: {X-Request-Id: r1}, body: '{"id":"r","status":"cancelled"}'}
+expect: {status: 201, headers: {x-request-id: r1}, body: '{"id":"r","status":"cancelled"}'}
+---
+name: retrieve answered 200
+request: {method: GET, path: /openai/v1/responses/r, query: {x: '1'}, body: !delete }
+mocks:
+- request: {method: GET, path: /v1/responses/r, query: {x: '1'}, body: ''}
+  response: {body: '{"id":"r"}'}
+expect: {body: '{"id":"r"}'}
+---
+name: upstream error with an error object is relayed with its headers
+mocks:
+- response:
+    status: 400
+    headers: {Content-Type: text/plain, Retry-After: '7'}
+    body: '{"error":{"message":"Invalid image data","type":"invalid_request_error","param":null,"code":null}}'
+expect:
+  status: 400
+  headers: {retry-after: '7'}
+  body: '{"error":{"message":"Invalid image data","type":"invalid_request_error","param":null,"code":null}}'
+---
+name: upstream plain text error
+mocks:
+- response: {status: 503, headers: {Content-Type: text/plain, Retry-After: '7'}, body: upstream down}
+expect: {status: 503, headers: {content-type: text/plain, retry-after: '7'}, body: upstream down}
+---
+name: upstream error whose error member is not an object
+mocks:
+- response: {status: 400, body: '{"error":"bad"}'}
+expect: {status: 400, body: '{"error":"bad"}'}
+---
+name: upstream error with a content policy code
+mocks:
+- response: {status: 400, body: '{"error":{"message":"x","code":"content_policy_violation"}}'}
+expect: {status: 400, body: '{"error":{"message":"x","code":"content_policy_violation"}}'}
+---
+name: redirect relayed and not followed
+mocks:
+- response: {status: 307, headers: {Location: 'http://elsewhere.invalid/x'}, body: moved}
+expect: {status: 307, body: moved}
+---
+name: delete of an unknown response
+request: {method: DELETE, path: /openai/v1/responses/r, body: !delete }
+mocks:
+- request: {method: DELETE, path: /v1/responses/r, body: ''}
+  response:
+    status: 404
+    body: '{"error":{"message":"No response found","type":"invalid_request_error","param":null,"code":null}}'
+expect:
+  status: 404
+  body: '{"error":{"message":"No response found","type":"invalid_request_error","param":null,"code":null}}'
+---
+name: streamed error is a plain answer
+request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+mocks:
+- request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+  response: {status: 429, headers: {Content-Type: application/json, Retry-After: '7'}, body: '{"error":{"message":"slow"}}'}
+expect: {status: 429, headers: {retry-after: '7'}, body: '{"error":{"message":"slow"}}'}
+---
+name: connection refused is a 502
+request: {headers: {X-Upstream-Endpoint: 'http://127.0.0.1:1/v1/responses'}}
+mocks: []
+expect:
+  status: 502
+  headers: {content-type: application/json}
+  json: {error: {code: '502', message: Error communicating with OpenAI, type: connection}}
+---
+name: retrieve with the upstream down is a 502
+request: {method: GET, path: /openai/v1/responses/r, headers: {X-Upstream-Endpoint: 'http://127.0.0.1:1/v1/responses'}, body: !delete }
+mocks: []
+expect: {status: 502, json: {error: {code: '502', message: Error communicating with OpenAI, type: connection}}}
+---
+name: endpoint that is no URL is a 500
+request: {headers: {X-Upstream-Endpoint: 'http://bad host/v1/responses'}}
+mocks: []
+expect:
+  status: 500
+  headers: {content-type: application/json}
+  json: {error: {code: '500', message: Internal server error, type: internal_server_error}}

@@ -1,0 +1,22 @@
+# Vertex AI adapter routes the service does not serve (Gemini, Claude, Mistral, Imagen and Veo chat, embeddings,
+# model list): each answers 404 and calls nothing.
+---
+name: chat completions
+request:
+  method: POST
+  path: /openai/deployments/gemini-2.5-flash/chat/completions
+  headers: {Api-Key: dk}
+  json: {messages: [{role: user, content: hi}]}
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: embeddings
+request:
+  method: POST
+  path: /openai/deployments/text-embedding-005/embeddings
+  headers: {Api-Key: dk}
+  json: {input: hi}
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: model list
+request: {method: GET, path: /openai/models, headers: {Api-Key: dk}}
+expect: {status: 404, json: {detail: Not Found}}

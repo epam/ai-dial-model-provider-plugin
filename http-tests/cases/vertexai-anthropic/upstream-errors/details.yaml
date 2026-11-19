@@ -1,0 +1,61 @@
+# The edges of the error relay: the headers kept, bodies that are not JSON, redirects, and no upstream at all.
+---
+name: 429 keeps Retry-After and Retry-After-Ms only
+mocks:
+- response:
+    status: 429
+    headers: {Content-Type: application/json, Retry-After: '7', Retry-After-Ms: '7000', X-Junk: '1', X-Request-Id: r}
+    json: {type: error, error: {type: rate_limit_error, message: slow down}}
+expect:
+  status: 429
+  headers: {retry-after: '7', retry-after-ms: '7000', content-type: application/json, x-junk: {$absent: true}, x-request-id: {$absent: true}}
+  json: {type: error, error: {type: rate_limit_error, message: slow down}}
+---
+name: 502 with an HTML body
+mocks:
+- response:
+    status: 502
+    headers: {Content-Type: text/html}
+    body: <html>Bad Gateway</html>
+expect: {status: 502, headers: {content-type: text/html}, body: '<html>Bad Gateway</html>'}
+---
+name: 500 with an empty body
+mocks:
+- response: {status: 500, body: ''}
+expect: {status: 500, body: ''}
+---
+name: 503 with a Vertex AI style error body
+mocks:
+- response:
+    status: 503
+    headers: {Content-Type: application/json}
+    json: {error: {code: 503, message: The service is currently unavailable., status: UNAVAILABLE}}
+expect:
+  status: 503
+  json: {error: {code: 503, message: The service is currently unavailable., status: UNAVAILABLE}}
+---
+name: redirect is relayed and not followed
+mocks:
+- response: {status: 307, headers: {Location: 'http://elsewhere.invalid/x', Retry-After-Ms: '5'}, body: moved}
+expect: {status: 307, headers: {retry-after-ms: '5', location: {$absent: true}}, body: moved}
+---
+name: error body of count_tokens is relayed
+request:
+  path: /anthropic/v1/messages/count_tokens
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/count-tokens:rawPredict
+    body: !delete
+  response:
+    status: 400
+    headers: {Content-Type: application/json}
+    json: {type: error, error: {type: invalid_request_error, message: bad}}
+expect: {status: 400, json: {type: error, error: {type: invalid_request_error, message: bad}}}
+---
+name: upstream that refuses the connection is a 500 without details
+server: {env: {ANTHROPIC_VERTEX_BASE_URL: 'http://127.0.0.1:1'}}
+mocks: []
+expect:
+  status: 500
+  headers: {content-type: application/json}
+  body: "{\"error\":{\"message\":\"Internal server error\",\"type\":\"api_error\"},\"type\":\"error\"}\n"

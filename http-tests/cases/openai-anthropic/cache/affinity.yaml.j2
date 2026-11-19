@@ -1,0 +1,60 @@
+# The DIAL cache affinity headers (X-Dial-Cache-Breakpoint-Path, X-Dial-Cache-Expire-At = now + TTL, now being 1000)
+# the service adds to a 200 of /v1/messages: the breakpoint is the last block with an ephemeral marker (or, with a
+# top-level cache_control object, the last block), the TTL the longest `ttl` of the markers (300 s by default).
+{% set E = '{"type":"ephemeral"}' %}
+{# title, body members after "model", breakpoint path (none: no headers), expiry #}
+{% set scenarios = [
+  ["marker on a message block", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '}]}]', "prefix.body.messages[0].content[0]", 1300],
+  ["last marker wins", '"system":[{"type":"text","text":"s","cache_control":' ~ E ~ '}],"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '},{"type":"text","text":"b"}]}]', "prefix.body.messages[0].content[0]", 1300],
+  ["marker on the system prompt", '"system":[{"type":"text","text":"s","cache_control":' ~ E ~ '}],"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}]', "prefix.body.system[0]", 1300],
+  ["marker on a tool", '"tools":[{"name":"get","cache_control":' ~ E ~ '}],"messages":[]', "prefix.body.tools[0]", 1300],
+  ["ttl in hours", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral","ttl":"1h"}}]}]', "prefix.body.messages[0].content[0]", 4600],
+  ["ttl in minutes", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral","ttl":"5m"}}]}]', "prefix.body.messages[0].content[0]", 1300],
+  ["longest ttl", '"tools":[{"name":"get","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '}]}]', "prefix.body.messages[0].content[0]", 4600],
+  ["malformed ttl", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral","ttl":"xm"}}]}]', "prefix.body.messages[0].content[0]", 1300],
+  ["non-positive ttl", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral","ttl":"0s"}}]}]', "prefix.body.messages[0].content[0]", 1300],
+  ["automatic caching takes the last block", '"cache_control":{"type":"ephemeral","ttl":"30s"},"system":"s","messages":[{"role":"user","content":[{"type":"text","text":"a"}]},{"role":"user","content":"b"}]', "prefix.body.messages[1].content[0]", 1030],
+  ["marker that is not ephemeral", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"other"}}]}]', none, 0],
+  ["top-level cache_control that is not an object", '"cache_control":[1],"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '}]}]', none, 0],
+  ["automatic caching without blocks", '"cache_control":' ~ E ~ ',"messages":[]', none, 0],
+  ["no messages", '"system":[{"type":"text","text":"s","cache_control":' ~ E ~ '}]', none, 0],
+  ["messages that are not an array", '"cache_control":' ~ E ~ ',"messages":{"content":"m"}', none, 0],
+] %}
+{% for title, members, path, expires in scenarios %}
+---
+name: {{ ("cache " ~ title) | tojson }}
+request:
+  body: {{ ('{"model":"claude-x",' ~ members ~ '}') | tojson }}
+mocks:
+- request:
+    body: {{ ('{"model":"claude-x",' ~ members ~ '}') | tojson }}
+expect:
+{% if path %}
+  headers: {x-dial-cache-breakpoint-path: {{ path | tojson }}, x-dial-cache-expire-at: {{ (expires | string) | tojson }}}
+{% else %}
+  headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}
+{% endif %}
+{% endfor %}
+---
+name: cache headers only for 200 on count_tokens
+request:
+  path: /anthropic/v1/messages/count_tokens
+  body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]}'
+mocks:
+- request:
+    path: /provider/v1/messages/count_tokens
+    body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]}'
+expect: {headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}}
+---
+name: cache headers not on an upstream error
+request:
+  body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]}'
+mocks:
+- request:
+    body: '{"model":"claude-x","messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]}'
+  response: {status: 400, json: {type: error, error: {type: invalid_request_error, message: bad}}}
+expect:
+  status: 400
+  headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}
+  body: !delete
+  json: {type: error, error: {type: invalid_request_error, message: bad}}

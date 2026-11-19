@@ -1,0 +1,105 @@
+# Retrieve, delete, cancel and input_tokens call the upstream create would call, with its method; the id is written
+# decoded and re-encoded with dot segments resolved; no body goes but cancel's and delete's empty one; routes not
+# matched are 404, a wrong method a 405.
+---
+name: retrieve sends no body and no content length
+request: {method: GET, path: /openai/v1/responses/r, body: !delete }
+mocks:
+- request: {method: GET, path: /v1/responses/r, headers: {content-length: {$absent: true}}, body: ''}
+---
+name: delete sends an empty body with a zero content length
+request: {method: DELETE, path: /openai/v1/responses/r, body: !delete }
+mocks:
+- request: {method: DELETE, path: /v1/responses/r, headers: {content-length: '0', content-type: application/json}, body: ''}
+---
+name: cancel ignores the client body
+request: {path: /openai/v1/responses/r/cancel, body: '{"model":'}
+mocks:
+- request: {path: /v1/responses/r/cancel, headers: {content-length: '0'}, body: ''}
+---
+name: cancel on Azure
+request:
+  path: /openai/responses/resp_1/cancel
+  query: {api-version: 2025-04-01-preview}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt-5/responses'}
+  body: !delete
+mocks:
+- request:
+    path: /openai/responses/resp_1/cancel
+    query: {api-version: 2025-04-01-preview}
+    headers: {api-key: k, authorization: {$absent: true}}
+    body: ''
+---
+name: input_tokens on the legacy route
+request: {path: /openai/responses/input_tokens, body: '{"model":"gpt-5","input":"hi"}'}
+mocks:
+- request: {path: /v1/responses/input_tokens, body: '{"model":"gpt-5","input":"hi"}'}
+---
+name: GET input_tokens is a retrieve of that id
+request: {method: GET, path: /openai/v1/responses/input_tokens, body: !delete }
+mocks:
+- request: {method: GET, path: /v1/responses/input_tokens, body: ''}
+---
+name: id with a space, a colon and non-ASCII
+request: {method: GET, path: '/openai/v1/responses/resp%201:%C3%A9', body: !delete }
+mocks:
+- request: {method: GET, path: '/v1/responses/resp%201:%C3%A9', body: ''}
+---
+name: needlessly escaped id
+request: {method: DELETE, path: '/openai/v1/responses/resp%5F1%21', body: !delete }
+mocks:
+- request: {method: DELETE, path: '/v1/responses/resp_1!', body: ''}
+---
+name: id with a percent sign
+request: {method: GET, path: '/openai/v1/responses/100%25', body: !delete }
+mocks:
+- request: {method: GET, path: '/v1/responses/100%25', body: ''}
+---
+name: dot segment id resolves to the parent
+request: {method: GET, path: '/openai/v1/responses/%2E%2E', body: !delete }
+mocks:
+- request: {method: GET, path: '/v1', body: ''}
+---
+name: delete query keeps the last value and drops empty ones and api-version
+request:
+  method: DELETE
+  path: /openai/v1/responses/r
+  query: {b: ['1', '2'], a: 'x y', e: '', api-version: v}
+  body: !delete
+mocks:
+- request: {method: DELETE, path: /v1/responses/r, query: {b: '2', a: 'x y'}, body: ''}
+---
+name: escaped slash in the id is a 404
+request: {method: GET, path: '/openai/v1/responses/a%2Fb', body: !delete }
+mocks: []
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: something after cancel is a 404
+request: {path: /openai/v1/responses/x/cancel/y}
+mocks: []
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: something after input_tokens is a 404
+request: {path: /openai/v1/responses/input_tokens/x}
+mocks: []
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: HEAD on an id is a 405
+request: {method: HEAD, path: /openai/v1/responses/r, body: !delete }
+mocks: []
+expect: {status: 405, headers: {allow: GET}, body: !delete }
+---
+name: GET on the base is a 405
+request: {method: GET, path: /openai/v1/responses, body: !delete }
+mocks: []
+expect: {status: 405, headers: {allow: POST}, json: {detail: Method Not Allowed}}
+---
+name: DELETE on cancel is a 405
+request: {method: DELETE, path: /openai/responses/x/cancel, body: !delete }
+mocks: []
+expect: {status: 405, headers: {allow: POST}, json: {detail: Method Not Allowed}}
+---
+name: the routes are not served below another mount
+request: {path: /openai/v1/chat/completions}
+mocks: []
+expect: {status: 404, json: {detail: Not Found}}

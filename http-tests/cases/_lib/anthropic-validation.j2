@@ -1,0 +1,100 @@
+{# The 400s the service itself answers for a request body, the same on every upstream (anthropic-messages): the
+   answer is the Anthropic API's error body, nothing is sent upstream, no credential is fetched. A suite's file calls
+   `cases()` (`count_tokens_headers` when the default upstream lacks count_tokens); its base supplies the upstream the request would go to. #}
+{% macro refused(title, body, message, path="/anthropic/v1/messages", headers={}) %}
+---
+name: {{ title | tojson }}
+request:
+  path: {{ path | tojson }}
+  headers: {{ headers | tojson }}
+  body: {{ body | tojson }}
+mocks: []
+expect:
+  status: 400
+  headers: {content-type: application/json}
+  json:
+    type: error
+    error: {type: invalid_request_error, message: {{ message | tojson }}}
+{% endmacro %}
+{# count_tokens_headers: what a count_tokens request needs to reach the body check, where the default upstream has no such endpoint #}
+{% macro cases(count_tokens_headers={}) %}
+{% set bodies = [
+  ["array body", "[1]", "The request body must be a JSON object, not an array"],
+  ["string body", "\"m\"", "The request body must be a JSON object, not a string"],
+  ["number body", "1", "The request body must be a JSON object, not a number"],
+  ["boolean body", "true", "The request body must be a JSON object, not a boolean"],
+  ["null body", "null", "The request body must be a JSON object, not null"],
+  ["data after the object", "{\"model\":\"m\"} {}", "The request body is not valid JSON: data follows the object"],
+  ["missing model", "{\"messages\":[]}", "model: Field required"],
+  ["null model", "{\"model\":null,\"messages\":[]}", "model: Field required"],
+  ["number model", "{\"model\":1,\"messages\":[]}", "model: Input should be a valid string"],
+  ["boolean model", "{\"model\":true,\"messages\":[]}", "model: Input should be a valid string"],
+  ["array model", "{\"model\":[\"a\"],\"messages\":[]}", "model: Input should be a valid string"],
+  ["object model", "{\"model\":{\"k\":\"v\"},\"messages\":[]}", "model: Input should be a valid string"],
+  ["empty model", "{\"model\":\"\",\"messages\":[]}", "model: String should have at least 1 character"],
+  ["stream as a string", "{\"model\":\"m\",\"stream\":\"false\",\"messages\":[]}", "\"stream\" must be a boolean, but is a string"],
+  ["stream as a number", "{\"model\":\"m\",\"stream\":1,\"messages\":[]}", "\"stream\" must be a boolean, but is a number"],
+  ["stream as an array", "{\"model\":\"m\",\"stream\":[],\"messages\":[]}", "\"stream\" must be a boolean, but is an array"],
+  ["stream as an object", "{\"model\":\"m\",\"stream\":{},\"messages\":[]}", "\"stream\" must be a boolean, but is an object"],
+] %}
+{% for title, body, message in bodies %}
+{{ refused(title, body, message) }}
+{% endfor %}
+{{ refused("empty body", "", "The request body is empty") }}
+{# the parser's own reason is not pinned: a pattern #}
+{% for title, body in [
+  ["cut body", "{\"model\":"],
+  ["NaN", "{\"model\":\"m\",\"x\":NaN}"],
+  ["Infinity", "{\"model\":\"m\",\"x\":Infinity}"],
+  ["not JSON", "not json"],
+] %}
+---
+name: {{ title | tojson }}
+request: {body: {{ body | tojson }}}
+mocks: []
+expect:
+  status: 400
+  headers: {content-type: application/json}
+  json:
+    type: error
+    error: {type: invalid_request_error, message: {$regex: '^The request body is not valid JSON: .'}}
+{% endfor %}
+---
+name: repeated member
+request: {body: '{"model":"a","model":"m","max_tokens":5,"messages":[]}'}
+mocks: []
+expect:
+  status: 400
+  json:
+    type: error
+    error: {type: invalid_request_error, message: "The request body is not valid JSON: Duplicate field 'model'"}
+---
+name: repeated member inside messages
+request: {body: '{"model":"m","messages":[{"role":"user","role":"user"}]}'}
+mocks: []
+expect:
+  status: 400
+  json:
+    type: error
+    error: {type: invalid_request_error, message: {$regex: "^The request body is not valid JSON: Duplicate field 'role'"}}
+---
+name: invalid UTF-8
+request: {body: !delete , body_base64: eyJtb2RlbCI6Im3/In0=}
+mocks: []
+expect:
+  status: 400
+  json:
+    type: error
+    error: {type: invalid_request_error, message: 'The request body is not valid JSON: Invalid UTF-8 start byte 0xff'}
+---
+name: BOM before another JSON value
+request: {body: !delete , body_base64: 77u/WzFd}
+mocks: []
+expect:
+  status: 400
+  json:
+    type: error
+    error: {type: invalid_request_error, message: 'The request body must be a JSON object, not an array'}
+{{ refused("count_tokens array body", "[1]", "The request body must be a JSON object, not an array", "/anthropic/v1/messages/count_tokens", count_tokens_headers) }}
+{{ refused("count_tokens missing model", "{\"messages\":[]}", "model: Field required", "/anthropic/v1/messages/count_tokens", count_tokens_headers) }}
+{% endmacro %}

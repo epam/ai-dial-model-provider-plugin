@@ -1,0 +1,75 @@
+# Without a key: the Azure AD token on v1 and versioned Azure endpoints, every route; a failure to get one is a 401 and
+# no call; what lists a deployment or a vendor as needing a key is a 401 too.
+---
+name: v1 endpoint without a key
+---
+name: Azure v1 endpoint without a key
+request: {headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/v1/responses'}}
+mocks:
+- request: {path: /openai/v1/responses}
+---
+name: deployment endpoint without a key
+request:
+  path: /openai/responses
+  query: {api-version: v}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'}
+mocks:
+- request: {path: /openai/responses, query: {api-version: v}}
+---
+name: retrieve without a key
+request: {method: GET, path: /openai/v1/responses/r, body: !delete }
+mocks:
+- request: {method: GET, path: /v1/responses/r, body: ''}
+---
+name: delete without a key
+request: {method: DELETE, path: /openai/v1/responses/r, body: !delete }
+mocks:
+- request: {method: DELETE, path: /v1/responses/r, body: ''}
+---
+name: cancel without a key on a deployment endpoint
+request:
+  path: /openai/responses/r/cancel
+  query: {api-version: v}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'}
+  body: !delete
+mocks:
+- request: {path: /openai/responses/r/cancel, query: {api-version: v}, body: ''}
+---
+name: input_tokens without a key
+request: {path: /openai/v1/responses/input_tokens, body: '{"model":"gpt-5","input":"hi"}'}
+mocks:
+- request: {path: /v1/responses/input_tokens, body: '{"model":"gpt-5","input":"hi"}'}
+---
+name: proxied Authorization kept on v1 without a key
+request: {headers: {X-Upstream-Extra-Data: '{"headers_to_proxy":["Authorization"]}', Authorization: Bearer user}}
+mocks:
+- request: {headers: {authorization: Bearer user}}
+---
+name: proxied Authorization replaced on versioned Azure without a key
+request:
+  path: /openai/responses
+  query: {api-version: v}
+  headers:
+    X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'
+    X-Upstream-Extra-Data: '{"headers_to_proxy":["Authorization"]}'
+    Authorization: Bearer user
+mocks:
+- request: {path: /openai/responses, query: {api-version: v}, headers: {authorization: Bearer aad}}
+---
+name: model not in VLLM_DEPLOYMENTS still takes the token
+server: {env: {VLLM_DEPLOYMENTS: 'vllm-m,'}}
+request: {body: '{"model":"gpt-5","input":"hi"}'}
+mocks:
+- request: {body: '{"model":"gpt-5","input":"hi"}'}
+---
+name: a model that is not a string is not a listed one
+server: {env: {VLLM_DEPLOYMENTS: 'vllm-m,'}}
+request: {path: /openai/v1/responses/input_tokens, body: '{"model":null,"input":"hi"}'}
+mocks:
+- request: {path: /v1/responses/input_tokens, body: '{"model":null,"input":"hi"}'}
+---
+name: retrieve of an id that names a listed model is not refused
+server: {env: {VLLM_DEPLOYMENTS: vllm-m}}
+request: {method: GET, path: '/openai/v1/responses/vllm-m', query: {model: vllm-m}, body: !delete }
+mocks:
+- request: {method: GET, path: /v1/responses/vllm-m, query: {model: vllm-m}, body: ''}

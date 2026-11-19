@@ -1,0 +1,50 @@
+# How a provider's error answer reaches the client, streaming or not: status and body as received, only Retry-After,
+# Retry-After-Ms, Content-Type and Content-Encoding of the headers.
+{% set errors = [
+  [400, "invalid_request_error", "max_tokens: Field required"],
+  [401, "authentication_error", "invalid x-api-key"],
+  [403, "permission_error", "forbidden"],
+  [404, "not_found_error", "model: claude-x"],
+  [429, "rate_limit_error", "slow down"],
+  [500, "api_error", "Internal server error"],
+  [529, "overloaded_error", "Overloaded"],
+] %}
+{% for status, kind, message in errors %}
+{% for stream in [false, true] %}
+{% set body = {"type": "error", "error": {"type": kind, "message": message}} %}
+---
+name: {{ ("provider " ~ status ~ (" streaming" if stream else "")) | tojson }}
+request:
+  body: {{ ('{"model":"claude-x",' ~ ('"stream":true,' if stream else '') ~ '"messages":[]}') | tojson }}
+mocks:
+- request:
+    body: !delete
+  response:
+    status: {{ status }}
+    headers: {Content-Type: application/json, X-Junk: '1', Request-Id: req_1, Retry-After: '2'}
+    json: {{ body | tojson }}
+expect:
+  status: {{ status }}
+  headers: {content-type: application/json, retry-after: '2', x-junk: {$absent: true}, request-id: {$absent: true}, x-dial-*: {$absent: true}}
+  json: {{ body | tojson }}
+{% endfor %}
+{% endfor %}
+---
+name: provider 502 with an HTML body
+mocks:
+- response: {status: 502, headers: {Content-Type: text/html}, body: <html>Bad Gateway</html>}
+expect: {status: 502, headers: {content-type: text/html}, body: '<html>Bad Gateway</html>'}
+---
+name: provider redirect is relayed and not followed
+mocks:
+- response: {status: 307, headers: {Location: 'http://elsewhere.invalid/x', Retry-After-Ms: '5'}, body: moved}
+expect: {status: 307, headers: {retry-after-ms: '5', location: {$absent: true}}, body: moved}
+---
+name: provider that refuses the connection is a 500 without details
+request:
+  headers: {X-Upstream-Endpoint: 'http://127.0.0.1:1/v1/messages'}
+mocks: []
+expect:
+  status: 500
+  headers: {content-type: application/json}
+  body: "{\"error\":{\"message\":\"Internal server error\",\"type\":\"api_error\"},\"type\":\"error\"}\n"

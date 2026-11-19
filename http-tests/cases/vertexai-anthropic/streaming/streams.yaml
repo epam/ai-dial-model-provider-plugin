@@ -1,0 +1,117 @@
+# Streaming against every upstream the vertexai adapter picks, and what a stream does around errors.
+---
+name: vertex stream
+---
+name: vertex stream carries the cache affinity headers
+request:
+  body: '{"model":"claude-x","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"1h"}}]}]}'
+mocks:
+- request:
+    body: '{"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"1h"}}]}],"anthropic_version":"vertex-2023-10-16"}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.messages[0].content[0]', x-dial-cache-expire-at: '4600'}
+---
+name: foundry stream
+request:
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages', X-Upstream-Key: k}
+mocks:
+- request:
+    path: /anthropic/v1/messages
+    headers: {api-key: k, x-api-key: k}
+    body: '{"model":"claude-x","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: platform stream
+server: {env: {ANTHROPIC_BASE_URL: '${mocks.upstream.url}/platform'}}
+request:
+  headers: {X-Upstream-Key: k}
+mocks:
+- request:
+    path: /platform/v1/messages
+    headers: {x-api-key: k}
+    body: '{"model":"claude-x","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: stream false is not streamed
+request:
+  body: '{"model":"claude-x","stream":false,"messages":[]}'
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/claude-x:rawPredict
+    body: '{"stream":false,"messages":[],"anthropic_version":"vertex-2023-10-16"}'
+  response: {headers: {Content-Type: application/json}, sse: !delete , body: '{"id":"msg_1"}'}
+expect: {headers: {content-type: application/json}, sse: !delete , body: '{"id":"msg_1"}'}
+---
+name: stream null is not streamed
+request:
+  body: '{"model":"claude-x","stream":null,"messages":[]}'
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/claude-x:rawPredict
+    body: '{"stream":null,"messages":[],"anthropic_version":"vertex-2023-10-16"}'
+  response: {headers: {Content-Type: application/json}, sse: !delete , body: '{"id":"msg_1"}'}
+expect: {headers: {content-type: application/json}, sse: !delete , body: '{"id":"msg_1"}'}
+---
+name: count_tokens ignores stream
+request:
+  path: /anthropic/v1/messages/count_tokens
+  body: '{"model":"claude-x","stream":true,"messages":[]}'
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/count-tokens:rawPredict
+    body: '{"model":"claude-x","stream":true,"messages":[],"anthropic_version":"vertex-2023-10-16"}'
+  response: {headers: {Content-Type: application/json}, sse: !delete , body: '{"input_tokens":1}'}
+expect: {headers: {content-type: application/json}, sse: !delete , body: '{"input_tokens":1}'}
+---
+name: stream relays an error event the model sent mid-stream
+mocks:
+- response:
+    sse:
+      events:
+      - {event: message_start, json: {type: message_start, message: {id: msg_1}}}
+      - {event: content_block_delta, json: {type: content_block_delta, index: 0, delta: {type: text_delta, text: Hel}}}
+      - {event: error, json: !ref /_lib/anthropic-stream.yaml:overloaded}
+expect:
+  status: 200
+  sse:
+    events:
+    - {event: message_start, json: {type: message_start, message: {id: msg_1}}}
+    - {event: content_block_delta, json: {type: content_block_delta, index: 0, delta: {type: text_delta, text: Hel}}}
+    - {event: error, json: {type: error, error: {type: overloaded_error, message: Overloaded}}}
+    aggregate: !delete
+---
+name: stream that ends before message_stop is relayed as it is
+mocks:
+- response:
+    sse:
+      events:
+      - {event: message_start, json: {type: message_start, message: {id: msg_1}}}
+expect:
+  sse:
+    events:
+    - {event: message_start, json: {type: message_start, message: {id: msg_1}}}
+    aggregate: !delete
+---
+name: stream of CRLF events is relayed
+mocks:
+- response:
+    sse:
+      line_ending: "\r\n"
+      events:
+      - {event: message_start, json: {type: message_start, message: {id: msg_1}}}
+expect:
+  sse:
+    events:
+    - {event: message_start, json: {type: message_start, message: {id: msg_1}}}
+    aggregate: !delete
+---
+name: stream answered with an error is not a stream
+mocks:
+- response:
+    status: 429
+    headers: {Content-Type: application/json, Retry-After: '7'}
+    sse: !delete
+    json: !ref /_lib/anthropic-stream.yaml:overloaded
+expect:
+  status: 429
+  headers: {content-type: application/json, retry-after: '7', x-dial-*: {$absent: true}}
+  sse: !delete
+  json: {type: error, error: {type: overloaded_error, message: Overloaded}}

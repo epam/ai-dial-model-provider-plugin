@@ -1,0 +1,79 @@
+# The headers sent upstream: only those the service sets and the ones the extra data proxies; what the extra data's
+# vendor adds; who wins when a proxied header meets one the service sets.
+---
+name: unlisted client headers are dropped
+request:
+  headers: {X-Other: dropped, Accept-Encoding: gzip, X-Dial-Cache-Breakpoint-Path: ''}
+mocks:
+- request:
+    headers:
+      x-other: {$absent: true}
+      accept-encoding: {$absent: true}
+      x-dial-cache-breakpoint-path: {$absent: true}
+      x-upstream-*: {$absent: true}
+      content-type: application/json
+      accept: application/json
+---
+name: headers_to_proxy forwards the named headers that are present
+request:
+  headers: {X-Upstream-Extra-Data: '{"headers_to_proxy":["X-Trace","X-Missing"]}', X-Trace: t1}
+mocks:
+- request: {headers: {x-trace: t1, x-missing: {$absent: true}}}
+---
+name: Accept-Encoding is never proxied
+request:
+  headers: {X-Upstream-Extra-Data: '{"headers_to_proxy":["Accept-Encoding"]}', Accept-Encoding: gzip}
+mocks:
+- request: {headers: {accept-encoding: {$absent: true}}}
+---
+name: a proxied Authorization is kept on v1
+request:
+  headers: {X-Upstream-Extra-Data: '{"headers_to_proxy":["Authorization"]}', Authorization: Bearer user}
+mocks:
+- request: {headers: {authorization: Bearer user}}
+---
+name: alibaba-cloud vendor adds the session cache header
+request:
+  headers: {X-Upstream-Extra-Data: '{"vendor":"alibaba-cloud"}'}
+mocks:
+- request: {headers: {x-dashscope-session-cache: enable, authorization: Bearer k}}
+---
+name: no vendor adds no session cache header
+request:
+  headers: {X-Upstream-Extra-Data: '{"vendor":null}'}
+mocks:
+- request: {headers: {x-dashscope-session-cache: {$absent: true}}}
+---
+name: unknown extra data members are ignored
+request:
+  headers: {X-Upstream-Extra-Data: '{"vendor":"alibaba-cloud","x":1}'}
+mocks:
+- request: {headers: {x-dashscope-session-cache: enable}}
+---
+name: aws members next to a v1 endpoint are not used
+request:
+  headers: {X-Upstream-Extra-Data: '{"aws_access_key_id":"AKIA","aws_secret_access_key":"s","region":"x"}'}
+mocks:
+- request: {headers: {authorization: Bearer k, x-amz-date: {$absent: true}}}
+---
+name: retrieve sends no content type even when proxied
+request:
+  method: GET
+  path: /openai/v1/responses/r
+  headers: {X-Upstream-Extra-Data: '{"headers_to_proxy":["Content-Type"]}', Content-Type: text/plain}
+  body: !delete
+mocks:
+- request: {method: GET, path: /v1/responses/r, headers: {content-type: {$absent: true}, accept: application/json}, body: ''}
+---
+name: delete with proxied and vendor headers
+request:
+  method: DELETE
+  path: /openai/v1/responses/r
+  headers: {X-Upstream-Extra-Data: '{"vendor":"alibaba-cloud","headers_to_proxy":["X-Trace"]}', X-Trace: t1}
+  body: !delete
+mocks:
+- request:
+    method: DELETE
+    path: /v1/responses/r
+    headers: {x-trace: t1, x-dashscope-session-cache: enable, content-type: application/json, accept: application/json}
+    body: ''

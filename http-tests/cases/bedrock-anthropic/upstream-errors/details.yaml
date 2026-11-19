@@ -1,0 +1,62 @@
+# The edges of the error relay on Bedrock: Bedrock's own error shape, headers, and no upstream at all.
+---
+name: bedrock error body shape is relayed as it is
+mocks:
+- response:
+    status: 400
+    headers: {Content-Type: application/json, X-Amzn-Errortype: ValidationException}
+    json: {message: 'The provided model identifier is invalid.'}
+expect:
+  status: 400
+  headers: {x-amzn-errortype: {$absent: true}}
+  json: {message: 'The provided model identifier is invalid.'}
+---
+name: bedrock throttling keeps Retry-After
+mocks:
+- response:
+    status: 429
+    headers: {Content-Type: application/json, Retry-After: '3', Retry-After-Ms: '3000'}
+    json: {message: Too many requests}
+expect:
+  status: 429
+  headers: {retry-after: '3', retry-after-ms: '3000'}
+  json: {message: Too many requests}
+---
+name: streaming throttling keeps Retry-After
+request:
+  body: '{"model":"anthropic.claude-x","stream":true,"messages":[]}'
+mocks:
+- request:
+    path: /bedrock/model/anthropic.claude-x/invoke-with-response-stream
+    body: !delete
+  response:
+    status: 429
+    headers: {Content-Type: application/json, Retry-After: '3'}
+    json: {message: Too many requests}
+expect:
+  status: 429
+  headers: {retry-after: '3', content-type: application/json}
+  json: {message: Too many requests}
+---
+name: 502 with an HTML body
+mocks:
+- response: {status: 502, headers: {Content-Type: text/html}, body: <html>Bad Gateway</html>}
+expect: {status: 502, headers: {content-type: text/html}, body: '<html>Bad Gateway</html>'}
+---
+name: invoke upstream that refuses the connection is a 500 without details
+server: {env: {ANTHROPIC_BEDROCK_BASE_URL: 'http://127.0.0.1:1'}}
+mocks: []
+expect:
+  status: 500
+  headers: {content-type: application/json}
+  body: "{\"error\":{\"message\":\"Internal server error\",\"type\":\"api_error\"},\"type\":\"error\"}\n"
+---
+name: aws configuration that does not load is a 500 without a call
+server: {env: {AWS_PROFILE: nope}}
+mocks: []
+expect:
+  status: 500
+  headers: {content-type: application/json}
+  json:
+    type: error
+    error: {type: api_error, message: 'Failed to resolve AWS credentials for Bedrock. Verify your AWS profile, environment variables, or runtime identity configuration and try again.'}

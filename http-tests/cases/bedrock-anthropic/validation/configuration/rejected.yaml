@@ -1,0 +1,41 @@
+# A request whose upstream cannot be made from its headers and the settings is a plain-text 500 before the body is read,
+# with nothing signed or sent.
+---
+name: extra data is not an object
+request:
+  headers: {X-Upstream-Extra-Data: '[]'}
+  body: '{"model":'
+---
+name: extra data is not JSON
+request:
+  headers: {X-Upstream-Extra-Data: '{'}
+---
+name: region is not a string
+request:
+  headers: {X-Upstream-Extra-Data: '{"region":1}'}
+---
+name: region is null
+request:
+  headers: {X-Upstream-Extra-Data: '{"region":null}'}
+---
+name: credential member that is neither a string nor null
+request:
+  headers: {X-Upstream-Extra-Data: '{"aws_access_key_id":1}'}
+---
+name: claude_client converse
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"converse"}'}
+---
+name: claude_client in another case
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"Legacy"}'}
+---
+name: default client that is not a client
+server: {env: {AWS_CLAUDE_DEFAULT_CLIENT: bogus}}
+---
+name: no region anywhere
+server: {env: {AWS_DEFAULT_REGION: !delete }}
+---
+name: empty region with an assumed role
+request:
+  headers: {X-Upstream-Extra-Data: '{"region":"","aws_assume_role_arn":"arn:aws:iam::1:role/r"}'}

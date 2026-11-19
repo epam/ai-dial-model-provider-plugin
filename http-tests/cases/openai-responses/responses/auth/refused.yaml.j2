@@ -1,0 +1,72 @@
+# The 502 of a key a vendor or deployment requires, and the 401 of a token that cannot be had. Nothing is sent upstream.
+{% set missing = {"error": {"message": "X-UPSTREAM-KEY header is missing in the request.", "type": "internal_server_error", "code": "502"}} %}
+{% set failed = {"error": {"code": "401", "message": "Authentication failed", "type": "Unauthorized"}} %}
+{% for title, env, headers, body in [
+  ["alibaba-cloud vendor", {}, {"X-Upstream-Extra-Data": '{"vendor":"alibaba-cloud"}'}, '{"model":"gpt-5","input":"hi"}'],
+  ["VLLM_DEPLOYMENTS model", {"VLLM_DEPLOYMENTS": "other, vllm-m"}, {}, '{"model":"vllm-m","input":"hi"}'],
+  ["QWEN3_ASR_VLLM_DEPLOYMENTS model", {"QWEN3_ASR_VLLM_DEPLOYMENTS": "asr"}, {}, '{"model":"asr","input":"hi"}'],
+  ["OpenAI platform endpoint", {}, {"X-Upstream-Endpoint": "https://api.openai.com/v1/responses"}, '{"model":"gpt-5","input":"hi"}'],
+] %}
+---
+name: {{ (title ~ " needs a key") | tojson }}
+server: {env: {{ env | tojson }}}
+request:
+  headers: {{ headers | tojson }}
+  body: {{ body | tojson }}
+mocks: []
+expect:
+  status: 502
+  headers: {content-type: application/json}
+  json: {{ missing | tojson }}
+{% endfor %}
+---
+name: alibaba-cloud vendor on a sub-resource
+request:
+  method: DELETE
+  path: /openai/v1/responses/r
+  headers: {X-Upstream-Extra-Data: '{"vendor":"alibaba-cloud"}'}
+  body: !delete
+mocks: []
+expect: {status: 502, json: {{ missing | tojson }}}
+---
+name: OpenAI platform on cancel
+request:
+  path: /openai/v1/responses/r/cancel
+  headers: {X-Upstream-Endpoint: 'https://api.openai.com/v1/responses'}
+  body: !delete
+mocks: []
+expect: {status: 502, json: {{ missing | tojson }}}
+---
+name: VLLM_DEPLOYMENTS model on input_tokens
+server: {env: {VLLM_DEPLOYMENTS: vllm-m}}
+request: {path: /openai/v1/responses/input_tokens, body: '{"model":"vllm-m","input":"hi"}'}
+mocks: []
+expect: {status: 502, json: {{ missing | tojson }}}
+{% for title, method, path, body in [
+  ["create", "POST", "/openai/v1/responses", '{"model":"gpt-5","input":"hi"}'],
+  ["stream", "POST", "/openai/v1/responses", '{"model":"gpt-5","stream":true,"input":"hi"}'],
+  ["retrieve", "GET", "/openai/v1/responses/r?stream=true", none],
+  ["delete", "DELETE", "/openai/v1/responses/r", none],
+  ["cancel", "POST", "/openai/v1/responses/r/cancel", none],
+  ["input_tokens", "POST", "/openai/v1/responses/input_tokens", '{}'],
+] %}
+---
+name: {{ ("token failure of " ~ title ~ " is a 401") | tojson }}
+server: {stubs: {azure_ad_error: boom, azure_ad_token: !delete }}
+request:
+  method: {{ method }}
+  path: {{ path.split("?")[0] | tojson }}
+{% if "?" in path %}
+  query: {stream: 'true'}
+{% endif %}
+{% if body %}
+  body: {{ body | tojson }}
+{% else %}
+  body: !delete
+{% endif %}
+mocks: []
+expect:
+  status: 401
+  headers: {content-type: application/json}
+  json: {{ failed | tojson }}
+{% endfor %}

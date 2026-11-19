@@ -1,0 +1,11 @@
+# The versioned Azure API: an endpoint with /openai/deployments/<name>, the key as Api-Key, api-version required and
+# sent first.
+request:
+  path: /openai/responses
+  query: {api-version: v}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'}
+mocks:
+- request:
+    path: /openai/responses
+    query: {api-version: v}
+    headers: {api-key: k, authorization: {$absent: true}}

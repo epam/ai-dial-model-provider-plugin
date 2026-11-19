@@ -1,0 +1,6 @@
+# A Bedrock Mantle endpoint: the create call goes to AWS_BEDROCK_BASE_URL (the mock), not to the endpoint.
+server: {env: {AWS_BEDROCK_BASE_URL: '${mocks.upstream.url}/openai/v1/'}}
+request:
+  headers: {X-Upstream-Endpoint: 'https://bedrock-mantle.us-east-1.api.aws/openai/v1/responses'}
+mocks:
+- request: {path: /openai/v1/responses}

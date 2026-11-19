@@ -1,0 +1,11 @@
+.gradle/
+build/
+out/
+.idea/
+*.iml
+.env
+__pycache__/
+*.jfr
+bin
+# the integration tests' Azure resource and key (integration-tests/README.md)
+*.local.json

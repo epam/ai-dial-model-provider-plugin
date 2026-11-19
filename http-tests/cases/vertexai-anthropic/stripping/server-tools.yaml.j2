@@ -1,0 +1,91 @@
+# Server tools a cloud lacks are taken out of `tools`: advisor on Vertex AI and Foundry, nothing on the platform
+# (web_search stays on all three: only Bedrock lacks it). A custom or untyped tool of the same name stays, the kept
+# tools are the received bytes of their elements in a compact array, and `tools` is forwarded as received when none goes.
+{% set A = '{"type":"advisor_20260301","name":"advisor"}' %}
+{% set S = '{"type":"web_search_20250305","name":"web_search"}' %}
+{% set G = '{"name":"get","input_schema":{"type":"object"}}' %}
+{% set CA = '{"type":"custom","name":"advisor"}' %}
+{% set UA = '{"name":"advisor"}' %}
+{% set NA = '{"type":null,"name":"advisor"}' %}
+{# title, tools received, tools kept where advisor is stripped #}
+{% set scenarios = [
+  ["advisor among tools", [A, G], [G]],
+  ["advisor alone", [A], []],
+  ["web_search kept", [S, G], [S, G]],
+  ["advisor and web_search", [A, S, G], [S, G]],
+  ["custom and untyped advisor kept", [A, CA, UA, G], [CA, UA, G]],
+  ["null type advisor kept", [NA, G], [NA, G]],
+] %}
+{# untouched: vertex rewrites the body (the model leaves it): members compact, each value as received; the others
+   change no field, so the body is as received #}
+{# cloud: what its request adds, and how the upstream's body is made of the tools #}
+{% set clouds = {
+  "vertex": {
+    "env": {}, "headers": {}, "strips": true,
+    "path": "/vertex/projects/p/locations/us-east5/publishers/anthropic/models/claude-x:rawPredict",
+    "head": '{"tools":', "tail": ',"messages":[],"anthropic_version":"vertex-2023-10-16"}',
+    "untouched": '{"tools":[ ' ~ G ~ ' , ' ~ S ~ ' ],"messages":[],"anthropic_version":"vertex-2023-10-16"}',
+  },
+  "foundry": {
+    "env": {}, "headers": {"X-Upstream-Endpoint": "${mocks.upstream.url}/anthropic/v1/messages", "X-Upstream-Key": "k"},
+    "strips": true, "path": "/anthropic/v1/messages",
+    "head": '{"model":"claude-x","tools":', "tail": ',"messages":[]}',
+    "untouched": '{ "model":"claude-x", "tools" : [ ' ~ G ~ ' , ' ~ S ~ ' ], "messages":[] }',
+  },
+  "platform": {
+    "env": {"ANTHROPIC_BASE_URL": "${mocks.upstream.url}/platform"}, "headers": {"X-Upstream-Key": "k"},
+    "strips": false, "path": "/platform/v1/messages",
+    "head": '{"model":"claude-x","tools":', "tail": ',"messages":[]}',
+    "untouched": '{ "model":"claude-x", "tools" : [ ' ~ G ~ ' , ' ~ S ~ ' ], "messages":[] }',
+  },
+} %}
+{% for cloud, c in clouds.items() %}
+{% for title, tools, kept in scenarios %}
+---
+name: {{ (cloud ~ " " ~ title) | tojson }}
+server: {env: {{ c.env | tojson }}}
+request:
+  headers: {{ c.headers | tojson }}
+  body: {{ ('{"model":"claude-x","tools":[' ~ tools | join(",") ~ '],"messages":[]}') | tojson }}
+mocks:
+- request:
+    path: {{ c.path | tojson }}
+    body: {{ (c.head ~ "[" ~ ((kept if c.strips else tools) | join(",")) ~ "]" ~ c.tail) | tojson }}
+{% endfor %}
+---
+name: {{ (cloud ~ " tools untouched when none is stripped") | tojson }}
+server: {env: {{ c.env | tojson }}}
+request:
+  headers: {{ c.headers | tojson }}
+  body: {{ ('{ "model":"claude-x", "tools" : [ ' ~ G ~ ' , ' ~ S ~ ' ], "messages":[] }') | tojson }}
+mocks:
+- request:
+    path: {{ c.path | tojson }}
+    body: {{ (c.untouched) | tojson }}
+{% endfor %}
+---
+name: vertex stripped tools array is compact and its elements are the received bytes
+# the elements are not re-escaped (\u003c): the code keeps their bytes, and so does this case
+request:
+  body: '{"model":"claude-x","tools":[{"name":"advisor","type":"advisor_20260301"},{ "name" : "t", "description" : "<a> & <b>" }],"messages":[]}'
+mocks:
+- request:
+    body: '{"tools":[{ "name" : "t", "description" : "<a> & <b>" }],"messages":[],"anthropic_version":"vertex-2023-10-16"}'
+---
+name: vertex advisor stripped on count_tokens too
+request:
+  path: /anthropic/v1/messages/count_tokens
+  body: '{"model":"claude-x","tools":[{"type":"advisor_20260301","name":"advisor"},{"name":"get"}],"messages":[]}'
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/count-tokens:rawPredict
+    body: '{"model":"claude-x","tools":[{"name":"get"}],"messages":[],"anthropic_version":"vertex-2023-10-16"}'
+---
+name: vertex cache breakpoint indexes the tools DIAL Core sent
+request:
+  body: '{"model":"claude-x","tools":[{"type":"advisor_20260301","name":"advisor"},{"name":"get","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[]}'
+mocks:
+- request:
+    body: '{"tools":[{"name":"get","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[],"anthropic_version":"vertex-2023-10-16"}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.tools[1]', x-dial-cache-expire-at: '4600'}

@@ -1,0 +1,85 @@
+apply plugin: 'java-library'
+
+// The library: everything a deployment needs except the process around it. ai-dial-core depends on this module to
+// serve the providers inside its own Vert.x; it must stay free of logging backends, metrics servers and the
+// OpenTelemetry SDK, which the embedding process owns.
+dependencies {
+    api "io.vertx:vertx-core:${vertx_version}"
+    api "org.jspecify:jspecify:${jspecify_version}"
+    implementation "com.fasterxml.jackson.core:jackson-core:${jackson_core_version}"
+    implementation "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
+    implementation "com.azure:azure-identity:${azure_version}"
+    implementation platform("software.amazon.awssdk:bom:${aws_sdk_v2_version}")
+    implementation "software.amazon.awssdk:apache-client"
+    implementation "software.amazon.awssdk:auth"
+    implementation "software.amazon.awssdk:regions"
+    implementation "software.amazon.awssdk:sts"
+    implementation "com.google.auth:google-auth-library-oauth2-http:${google_auth_version}"
+    implementation "com.google.guava:guava:${guava_version}"
+    implementation "org.slf4j:slf4j-api:${slf4j_version}"
+}
+
+dependencies {
+    // The declarative HTTP test runner (src/test/.../testing/http): compiled cases are YAML, answers JSON.
+    testImplementation "org.yaml:snakeyaml:${snakeyaml_version}"
+}
+
+// ---- Declarative HTTP test cases (http-tests/README.md) ----
+// http-tests/cases (YAML with !ref, Jinja2 templates as *.yaml.j2) compiled into plain YAML on the test classpath, under
+// http-tests/; the compiler runs on the Python on PATH (python3, python on Windows; or -Ppython=<interpreter>), Python
+// 3.10 or newer with pip, its pinned dependencies installed into build/http-tests/python. Paths are relative to the root project, so the
+// compiled cases come from the build cache wherever the checkout is.
+def httpTests = rootProject.layout.projectDirectory.dir('http-tests')
+def python = providers.gradleProperty('python')
+        .orElse(System.getProperty('os.name').toLowerCase().contains('windows') ? 'python' : 'python3')
+def pythonDeps = layout.buildDirectory.dir('http-tests/python')
+def compiledCases = layout.buildDirectory.dir('generated/http-tests')
+def relative = { rootProject.relativePath(it.get().asFile) }
+
+def httpTestsPython = tasks.register('httpTestsPython', Exec) {
+    description = "Installs the test-case compiler's pinned Python dependencies (http-tests/requirements.txt)."
+    inputs.file(httpTests.file('requirements.txt')).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property('python', python)
+    outputs.dir(pythonDeps)
+    workingDir rootProject.projectDir
+    executable python.get()
+    args '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', '--no-input',
+            '--target', relative(pythonDeps), '-r', 'http-tests/requirements.txt'
+    doFirst { delete pythonDeps }
+}
+
+// The compiler's own tests: templates, !ref resolution, validation, output.
+def testHttpTestCaseCompiler = tasks.register('testHttpTestCaseCompiler', Exec) {
+    description = 'Runs the test-case compiler tests (http-tests/tests).'
+    dependsOn httpTestsPython
+    inputs.files(httpTests.file('compile_test_cases.py'), httpTests.dir('schema'), httpTests.dir('tests'),
+            httpTests.file('requirements.txt')).withPathSensitivity(PathSensitivity.RELATIVE)
+    def passed = layout.buildDirectory.file('http-tests/compiler-tests.passed')
+    outputs.file(passed)
+    outputs.cacheIf { true }
+    workingDir rootProject.projectDir
+    environment 'PYTHONPATH', pythonDeps.get().asFile.absolutePath
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    executable python.get()
+    args '-s', '-m', 'unittest', 'discover', '--start-directory', 'http-tests/tests'
+    doLast { passed.get().asFile.text = 'passed\n' }
+}
+
+def compileHttpTestCases = tasks.register('compileHttpTestCases', Exec) {
+    description = 'Compiles http-tests/cases into plain YAML test cases, every !ref resolved and each case validated.'
+    dependsOn httpTestsPython
+    inputs.dir(httpTests.dir('cases')).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(httpTests.file('compile_test_cases.py'), httpTests.dir('schema'), httpTests.file('requirements.txt'))
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(compiledCases)
+    outputs.cacheIf { true }
+    workingDir rootProject.projectDir
+    environment 'PYTHONPATH', pythonDeps.get().asFile.absolutePath
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    executable python.get()
+    args '-s', 'http-tests/compile_test_cases.py', '--input', 'http-tests/cases',
+            '--output', relative(compiledCases) + '/http-tests'
+}
+
+sourceSets.test.resources.srcDir(compileHttpTestCases)
+tasks.named('test') { dependsOn testHttpTestCaseCompiler }

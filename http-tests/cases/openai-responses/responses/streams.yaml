@@ -1,0 +1,109 @@
+# Streamed create and retrieve: the upstream's bytes relayed in order, whole events, nothing interpreted. (The
+# heartbeat, a pause between events and cut connections are ResponsesRoutesTest's.)
+---
+name: events relayed verbatim with the upstream headers
+request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+mocks:
+- request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+  response:
+    headers: {Content-Type: text/event-stream, X-Request-Id: r1}
+    sse:
+      events:
+      - {event: response.created, json: {type: response.created, response: {error: null}}}
+      - {event: response.output_text.delta, json: {type: response.output_text.delta, delta: hi}}
+    body: !delete
+expect:
+  headers: {content-type: text/event-stream, x-request-id: r1}
+  body: !delete
+  sse:
+    events:
+    - {event: response.created, json: {type: response.created, response: {error: null}}}
+    - {event: response.output_text.delta, json: {type: response.output_text.delta, delta: hi}}
+    aggregate:
+    - {type: concat, path: delta, equals: hi}
+---
+name: an error event and [DONE] go through as they came
+request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+mocks:
+- request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+  response:
+    headers: {Content-Type: text/event-stream}
+    body: "data: {\"error\":{\"code\":\"429\",\"message\":\"slow\"}}\n\nevent: response.created\ndata: {\"type\":\"response.created\"}\n\ndata: [DONE]\n\n"
+expect:
+  body: "data: {\"error\":{\"code\":\"429\",\"message\":\"slow\"}}\n\nevent: response.created\ndata: {\"type\":\"response.created\"}\n\ndata: [DONE]\n\n"
+---
+name: an unterminated last event is relayed as it came
+request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+mocks:
+- request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+  response:
+    headers: {Content-Type: text/event-stream}
+    body: "event: response.created\ndata: {\"type\":\"response.created\"}\n\ndata: {\"type\":\"x\"}"
+expect:
+  body: "event: response.created\ndata: {\"type\":\"response.created\"}\n\ndata: {\"type\":\"x\"}"
+---
+name: extra blank lines and comments go through
+request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+mocks:
+- request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+  response:
+    headers: {Content-Type: text/event-stream}
+    body: ": hello\n\n\n\ndata: 1\n\n"
+expect:
+  body: ": hello\n\n\n\ndata: 1\n\n"
+---
+name: stream is read as true whatever the upstream content type
+request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+mocks:
+- request: {body: '{"model":"gpt-5","stream":true,"input":"hi"}'}
+  response: {headers: {Content-Type: application/json}, body: "data: 1\n\n"}
+expect: {headers: {content-type: application/json}, body: "data: 1\n\n"}
+---
+name: stream null and false are not streamed
+request: {body: '{"model":"gpt-5","stream":null,"input":"hi"}'}
+mocks:
+- request: {body: '{"model":"gpt-5","stream":null,"input":"hi"}'}
+---
+name: retrieve with stream=true is streamed
+request: {method: GET, path: /openai/v1/responses/r, query: {stream: 'true', x: '1'}, body: !delete }
+mocks:
+- request: {method: GET, path: /v1/responses/r, query: {stream: 'true', x: '1'}, body: ''}
+  response:
+    headers: {Content-Type: text/event-stream}
+    body: "event: response.created\ndata: {\"type\":\"response.created\"}\n\n"
+expect:
+  headers: {content-type: text/event-stream, x-dial-cache-breakpoint-path: {$absent: true}}
+  body: "event: response.created\ndata: {\"type\":\"response.created\"}\n\n"
+---
+name: retrieve with stream=TRUE is not streamed
+request: {method: GET, path: /openai/v1/responses/r, query: {stream: 'TRUE'}, body: !delete }
+mocks:
+- request: {method: GET, path: /v1/responses/r, query: {stream: 'TRUE'}, body: ''}
+  response: {body: '{"id":"r"}'}
+expect: {body: '{"id":"r"}'}
+---
+name: retrieve of a stream relays an error event
+request: {method: GET, path: /openai/v1/responses/r, query: {stream: 'true'}, body: !delete }
+mocks:
+- request: {method: GET, path: /v1/responses/r, query: {stream: 'true'}, body: ''}
+  response:
+    headers: {Content-Type: text/event-stream}
+    body: "data: {\"error\":{\"code\":\"429\",\"message\":\"slow\"}}\n\n"
+expect: {body: "data: {\"error\":{\"code\":\"429\",\"message\":\"slow\"}}\n\n"}
+---
+name: Azure retrieve with stream=true
+request:
+  method: GET
+  path: /openai/responses/r
+  query: {x: '1', stream: 'true', api-version: v}
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/openai/deployments/gpt/responses'}
+  body: !delete
+mocks:
+- request:
+    method: GET
+    path: /openai/responses/r
+    query: {api-version: v, x: '1', stream: 'true'}
+    headers: {api-key: k, authorization: {$absent: true}}
+    body: ''
+  response: {headers: {Content-Type: text/event-stream}, body: "data: 1\n\n"}
+expect: {headers: {content-type: text/event-stream}, body: "data: 1\n\n"}

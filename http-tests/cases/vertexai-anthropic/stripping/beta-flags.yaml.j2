@@ -1,0 +1,95 @@
+# What each cloud does not implement is taken out of anthropic-beta: Vertex AI drops thinking-token-count,
+# prompt-caching-scope and advisor-tool, Foundry only advisor-tool, the platform nothing. The header the upstream gets
+# is one value, the kept flags trimmed and joined by `,` in their order; none left, no header. The platform gets the
+# header as received.
+{% set flags = [
+  "oauth-2025-04-20", "redact-thinking-2026-02-12", "thinking-token-count-2026-05-13",
+  "prompt-caching-scope-2026-01-05", "claude-code-20250219", "advanced-tool-use-2025-11-20",
+  "advisor-tool-2026-03-01", "context-1m-2025-08-07",
+] %}
+{% set clouds = {
+  "vertex": {
+    "dropped": ["thinking-token-count-2026-05-13", "prompt-caching-scope-2026-01-05", "advisor-tool-2026-03-01"],
+    "env": {}, "headers": {}, "path": "/vertex/projects/p/locations/us-east5/publishers/anthropic/models/claude-x:rawPredict",
+    "body": '{"messages":[],"anthropic_version":"vertex-2023-10-16"}',
+  },
+  "foundry": {
+    "dropped": ["advisor-tool-2026-03-01"],
+    "env": {}, "headers": {"X-Upstream-Endpoint": "${mocks.upstream.url}/anthropic/v1/messages", "X-Upstream-Key": "k"},
+    "path": "/anthropic/v1/messages",
+    "body": '{"model":"claude-x","messages":[]}',
+  },
+  "platform": {
+    "dropped": [],
+    "env": {"ANTHROPIC_BASE_URL": "${mocks.upstream.url}/platform"}, "headers": {"X-Upstream-Key": "k"},
+    "path": "/platform/v1/messages",
+    "body": '{"model":"claude-x","messages":[]}',
+  },
+} %}
+{% for cloud, c in clouds.items() %}
+{% set raw = "a-1 ,, " ~ flags[0] ~ ", " ~ flags[6] ~ " ,b-2" %}
+{% for flag in flags %}
+---
+name: {{ (cloud ~ (" drops " if flag in c.dropped else " keeps ") ~ flag) | tojson }}
+server: {env: {{ c.env | tojson }}}
+request:
+  headers: {{ dict(c.headers, **{"Anthropic-Beta": flag}) | tojson }}
+  body: '{"model":"claude-x","messages":[]}'
+mocks:
+- request:
+    path: {{ c.path | tojson }}
+    headers: {anthropic-beta: {{ ({"$absent": true} if flag in c.dropped else flag) | tojson }}}
+    body: {{ c.body | tojson }}
+{% endfor %}
+---
+name: {{ (cloud ~ " beta header normalised") | tojson }}
+server: {env: {{ c.env | tojson }}}
+request:
+  headers: {{ dict(c.headers, **{"Anthropic-Beta": raw}) | tojson }}
+  body: '{"model":"claude-x","messages":[]}'
+mocks:
+- request:
+    path: {{ c.path | tojson }}
+    headers: {anthropic-beta: {{ (raw if cloud == "platform" else "a-1," ~ ("" if flags[0] in c.dropped else flags[0] ~ ",") ~ ("" if flags[6] in c.dropped else flags[6] ~ ",") ~ "b-2") | tojson }}}
+    body: {{ c.body | tojson }}
+---
+name: {{ (cloud ~ " every flag at once") | tojson }}
+server: {env: {{ c.env | tojson }}}
+request:
+  headers: {{ dict(c.headers, **{"Anthropic-Beta": flags | join(",")}) | tojson }}
+  body: '{"model":"claude-x","messages":[]}'
+mocks:
+- request:
+    path: {{ c.path | tojson }}
+    headers: {anthropic-beta: {{ (flags | reject("in", c.dropped) | join(",")) | tojson }}}
+    body: {{ c.body | tojson }}
+{% endfor %}
+---
+name: foundry with no beta flags left sends no anthropic-beta
+request:
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages', X-Upstream-Key: k, Anthropic-Beta: advisor-tool-2026-03-01}
+mocks:
+- request:
+    path: /anthropic/v1/messages
+    headers: {anthropic-beta: {$absent: true}}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: vertex stripping also applies to count_tokens
+request:
+  path: /anthropic/v1/messages/count_tokens
+  headers: {Anthropic-Beta: 'advisor-tool-2026-03-01,context-1m-2025-08-07'}
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/count-tokens:rawPredict
+    headers: {anthropic-beta: context-1m-2025-08-07}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}],"anthropic_version":"vertex-2023-10-16"}'
+---
+name: foundry without a key strips as with a key
+server: {stubs: {azure_ad_token: aad}}
+request:
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages', Anthropic-Beta: 'advisor-tool-2026-03-01,context-1m-2025-08-07'}
+mocks:
+- request:
+    path: /anthropic/v1/messages
+    headers: {anthropic-beta: context-1m-2025-08-07, authorization: Bearer aad}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'

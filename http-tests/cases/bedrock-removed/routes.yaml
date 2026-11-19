@@ -1,0 +1,18 @@
+# Bedrock adapter routes the service does not serve (Converse and Stability chat, embeddings, rate): each
+# answers 404 and calls nothing.
+---
+name: chat completions
+request:
+  method: POST
+  path: /openai/deployments/amazon.nova-pro-v1:0/chat/completions
+  headers: {Api-Key: dk}
+  json: {messages: [{role: user, content: hi}]}
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: embeddings
+request:
+  method: POST
+  path: /openai/deployments/amazon.titan-embed-text-v2:0/embeddings
+  headers: {Api-Key: dk}
+  json: {input: hi}
+expect: {status: 404, json: {detail: Not Found}}

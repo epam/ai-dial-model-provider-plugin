@@ -1,0 +1,94 @@
+# Claude on Bedrock through the invoke-model API: URL (region, model quoting), body shaping, SigV4, credentials.
+---
+name: invoke messages
+---
+name: invoke count_tokens is not implemented
+request:
+  path: /anthropic/v1/messages/count_tokens
+mocks: []
+expect:
+  status: 404
+  body: "{\"error\":{\"message\":\"Endpoint not supported\",\"type\":\"not_found_error\"},\"type\":\"error\"}\n"
+---
+name: invoke count_tokens answers 404 before reading the body
+request:
+  path: /anthropic/v1/messages/count_tokens
+  body: not json
+mocks: []
+expect:
+  status: 404
+  body: "{\"error\":{\"message\":\"Endpoint not supported\",\"type\":\"not_found_error\"},\"type\":\"error\"}\n"
+---
+name: invoke region from extra data
+request:
+  headers: {X-Upstream-Extra-Data: '{"region":"us-west-2"}'}
+mocks:
+- request:
+    headers: {authorization: {$regex: '^AWS4-HMAC-SHA256 Credential=AKID/\d{8}/us-west-2/bedrock/aws4_request, '}}
+---
+name: invoke static keys and a session token from extra data
+request:
+  headers: {X-Upstream-Extra-Data: '{"aws_access_key_id":"AKID2","aws_secret_access_key":"S2","aws_session_token":"TOK"}'}
+mocks:
+- request:
+    headers:
+      authorization: {$regex: '^AWS4-HMAC-SHA256 Credential=AKID2/\d{8}/us-east-1/bedrock/aws4_request, '}
+      x-amz-security-token: TOK
+      x-amz-date: {$regex: '^\d{8}T\d{6}Z$'}
+---
+name: invoke model is quoted as one path segment
+request:
+  body: '{"model":"arn:aws:bedrock:us-west-2:1:inference-profile/us.anthropic.claude-x-v1:0","messages":[]}'
+mocks:
+- request:
+    path: /bedrock/model/arn:aws:bedrock:us-west-2:1:inference-profile%2Fus.anthropic.claude-x-v1:0/invoke
+    body: '{"messages":[],"anthropic_version":"bedrock-2023-05-31"}'
+---
+name: invoke model quoting of reserved characters
+request:
+  body: '{"model":"a/b é+@x~_-.0","messages":[]}'
+mocks:
+- request:
+    path: /bedrock/model/a%2Fb%20%C3%A9%2B%40x~_-.0/invoke
+    body: '{"messages":[],"anthropic_version":"bedrock-2023-05-31"}'
+---
+name: invoke client anthropic_version and anthropic_beta kept
+request:
+  headers: {Anthropic-Beta: context-1m-2025-08-07}
+  body: '{"model":"anthropic.claude-x","anthropic_version":"bedrock-2024-01-01","anthropic_beta":["mine"],"messages":[]}'
+mocks:
+- request: {body: '{"anthropic_version":"bedrock-2024-01-01","anthropic_beta":["mine"],"messages":[]}'}
+---
+name: invoke moves the beta flags into the body
+request:
+  headers: {Anthropic-Beta: 'claude-code-20250219, context-1m-2025-08-07,interleaved-thinking-2025-05-14'}
+  body: '{"model":"anthropic.claude-x","stream":false,"max_tokens":5,"messages":[]}'
+mocks:
+- request:
+    headers: {anthropic-beta: 'context-1m-2025-08-07,interleaved-thinking-2025-05-14'}
+    body: '{"max_tokens":5,"messages":[],"anthropic_version":"bedrock-2023-05-31","anthropic_beta":["context-1m-2025-08-07","interleaved-thinking-2025-05-14"]}'
+---
+name: invoke sends the client's anthropic-version and never Accept-Encoding
+request:
+  headers: {Anthropic-Version: '2023-06-01', Accept-Encoding: gzip}
+mocks:
+- request: {headers: {anthropic-version: '2023-06-01', accept-encoding: {$absent: true}}}
+---
+name: invoke sends no anthropic-version by default
+mocks:
+- request: {headers: {anthropic-version: {$absent: true}}}
+---
+name: invoke forwards only anthropic headers
+request:
+  headers: {X-Other: dropped, Anthropic-Foo: '1', X-Upstream-Extra-Data: '{}'}
+mocks:
+- request: {headers: {anthropic-foo: '1', x-other: {$absent: true}, x-upstream-*: {$absent: true}}}
+---
+name: invoke cache affinity headers
+request:
+  body: '{"model":"anthropic.claude-x","messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}]}'
+mocks:
+- request:
+    body: '{"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}],"anthropic_version":"bedrock-2023-05-31"}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.messages[0].content[0]', x-dial-cache-expire-at: '1300'}

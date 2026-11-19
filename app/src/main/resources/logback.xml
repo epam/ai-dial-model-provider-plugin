@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- JSON lines on stdout. The service's own loggers take LOG_LEVEL (Main.setLogLevel); libraries stay at WARN. -->
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+    </appender>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE_JSON"/>
+    </root>
+</configuration>

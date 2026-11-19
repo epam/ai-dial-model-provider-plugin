@@ -1,0 +1,16 @@
+# Which upstream API an endpoint selects and the URL it gives; the client's query on v1: one parameter per name with
+# its last value, none empty, never api-version.
+---
+name: legacy route with a v1 endpoint
+request: {path: /openai/responses}
+---
+name: v1 query forwarded as one parameter per name
+request:
+  path: /openai/v1/responses
+  query: {b: ['1', '2'], a: 'x y', e: '', api-version: v}
+mocks:
+- request: {query: {b: '2', a: 'x y'}}
+---
+name: v1 endpoint with a doubled slash before the suffix
+request:
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/v1//responses'}

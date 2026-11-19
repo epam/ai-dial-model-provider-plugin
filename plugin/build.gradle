@@ -1,0 +1,70 @@
+// DIAL Core's plugin: the provider module served through DIAL Core's in-process plugin API. DIAL Core provides
+// the plugin API, Vert.x, Netty, Jackson and SLF4J at run time; pluginJar writes the one fat jar for its plugins directory.
+plugins {
+    id 'com.gradleup.shadow' version '9.6.1'
+}
+
+evaluationDependsOn(':provider') // its test helpers (MockUpstream)
+
+// The plugin API is published by ai-dial-core to its GitHub Packages Maven registry, which asks for a token with the
+// read:packages scope even for a public package: GPR_USERNAME and GPR_PASSWORD, or gpr.user and gpr.key in
+// ~/.gradle/gradle.properties. The version is pinned in gradle.properties (a plugin jar is built for one DIAL Core version).
+repositories {
+    maven {
+        name = 'AiDialCoreGitHubPackages'
+        url = uri('https://maven.pkg.github.com/epam/ai-dial-core')
+        credentials {
+            username = providers.gradleProperty('gpr.user').orElse(providers.environmentVariable('GPR_USERNAME')).orNull
+            password = providers.gradleProperty('gpr.key').orElse(providers.environmentVariable('GPR_PASSWORD')).orNull
+        }
+        content {
+            includeGroup 'com.epam.aidial'
+        }
+    }
+}
+
+def pluginApi = "com.epam.aidial:aidial-core-plugin-api:${plugin_api_version}"
+
+dependencies {
+    compileOnly pluginApi
+    compileOnly "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
+    compileOnly "org.slf4j:slf4j-api:${slf4j_version}"
+    implementation project(':provider')
+
+    testImplementation pluginApi
+    testImplementation "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
+    testImplementation rootProject.project(':provider').sourceSets.test.output
+}
+
+// What crosses the plugin API, and the logging API: DIAL Core's own copies must be the ones loaded.
+def providedByCore = { String group ->
+    group in ['io.vertx', 'io.netty', 'org.slf4j'] || group.startsWith('com.fasterxml.jackson')
+}
+
+// One jar with everything the plugin needs of its own (the provider module and its dependencies, the META-INF/services
+// files merged) and nothing DIAL Core provides. DIAL Core loads the jars of its plugins directory through one class loader.
+// Nothing is relocated: the plugin's classes share that loader with the other plugins' jars.
+tasks.register('pluginJar', com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
+    description = "Builds the fat jar for DIAL Core's plugins directory."
+    group = 'build'
+    from sourceSets.main.output
+    configurations = [project.configurations.runtimeClasspath]
+    dependencies {
+        exclude { providedByCore(it.moduleGroup) }
+    }
+    // The merge sees every copy of a service file only when duplicates of it are included (Shadow 9 drops them first).
+    filesMatching('META-INF/services/**') {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
+    mergeServiceFiles()
+    // Some bundled libraries keep classes of newer Java versions in META-INF/versions: the JVM reads them only for this attribute.
+    manifest {
+        attributes 'Multi-Release': 'true'
+    }
+    // The signatures of the merged jars (Azure's MSFTSIG) do not hold for the merged jar, and one module descriptor is wrong for it.
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/MSFTSIG.*'
+    exclude 'module-info.class', 'META-INF/versions/*/module-info.class'
+    archiveBaseName = 'aidial-model-provider-plugin'
+    archiveClassifier = ''
+    destinationDirectory = layout.buildDirectory.dir('plugins')
+}

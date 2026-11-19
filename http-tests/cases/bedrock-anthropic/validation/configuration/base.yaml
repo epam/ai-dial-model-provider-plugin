@@ -1,0 +1,6 @@
+# A refused configuration: a plain-text 500, nothing sent upstream.
+mocks: []
+expect:
+  status: 500
+  headers: {content-type: 'text/plain; charset=utf-8'}
+  body: Internal Server Error

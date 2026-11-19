@@ -1,0 +1,99 @@
+# The two other upstreams the vertexai adapter picks: Azure Foundry (an endpoint ending in /anthropic/v1/messages)
+# and the Anthropic platform (a key and no such endpoint).
+---
+name: foundry with a key
+request:
+  headers:
+    X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages'
+    X-Upstream-Key: k
+mocks:
+- request:
+    path: /anthropic/v1/messages
+    headers: {api-key: k, x-api-key: k, authorization: {$absent: true}, anthropic-version: '2023-06-01'}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: foundry count_tokens
+request:
+  path: /anthropic/v1/messages/count_tokens
+  headers:
+    X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages'
+    X-Upstream-Key: k
+mocks:
+- request:
+    path: /anthropic/v1/messages/count_tokens
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: foundry without a key takes an Azure AD token
+server: {stubs: {azure_ad_token: aad}}
+request:
+  headers: {X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages'}
+mocks:
+- request:
+    path: /anthropic/v1/messages
+    headers: {authorization: Bearer aad, api-key: {$absent: true}, x-api-key: {$absent: true}}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: foundry with an empty key sends no key header
+request:
+  headers:
+    X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages'
+    X-Upstream-Key: ''
+mocks:
+- request:
+    path: /anthropic/v1/messages
+    headers: {api-key: {$absent: true}, x-api-key: {$absent: true}, authorization: {$absent: true}}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: foundry client anthropic-version kept
+request:
+  headers:
+    X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages'
+    X-Upstream-Key: k
+    Anthropic-Version: '2023-01-01'
+mocks:
+- request:
+    path: /anthropic/v1/messages
+    headers: {anthropic-version: '2023-01-01'}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: foundry body untouched byte for byte
+request:
+  headers:
+    X-Upstream-Endpoint: '${mocks.upstream.url}/anthropic/v1/messages'
+    X-Upstream-Key: k
+  body: '{ "model" : "claude-x", "messages":[ {"role":"user","content":[{"type":"text","text":"hi é"}]} ] }'
+mocks:
+- request:
+    path: /anthropic/v1/messages
+    body: '{ "model" : "claude-x", "messages":[ {"role":"user","content":[{"type":"text","text":"hi é"}]} ] }'
+---
+name: platform key
+server: {env: {ANTHROPIC_BASE_URL: '${mocks.upstream.url}/platform/'}}
+request:
+  headers: {X-Upstream-Key: k}
+mocks:
+- request:
+    path: /platform/v1/messages
+    headers: {x-api-key: k, api-key: {$absent: true}, authorization: {$absent: true}, anthropic-version: '2023-06-01'}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: platform count_tokens
+server: {env: {ANTHROPIC_BASE_URL: '${mocks.upstream.url}/platform'}}
+request:
+  path: /anthropic/v1/messages/count_tokens
+  headers: {X-Upstream-Key: k}
+mocks:
+- request:
+    path: /platform/v1/messages/count_tokens
+    headers: {x-api-key: k}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: platform ignores a non-Foundry endpoint
+server: {env: {ANTHROPIC_BASE_URL: '${mocks.upstream.url}/platform'}}
+request:
+  headers: {X-Upstream-Key: k, X-Upstream-Endpoint: 'http://unused.invalid/v1/messages'}
+mocks:
+- request:
+    path: /platform/v1/messages
+    headers: {x-api-key: k}
+    body: '{"model":"claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'

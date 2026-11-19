@@ -1,0 +1,14 @@
+# Routes below the openai mount: the Anthropic ones answer POST only; chat completions and the like are gone.
+---
+name: GET on messages is a 405
+request: {method: GET, path: /anthropic/v1/messages, body: !delete }
+mocks: []
+expect: {status: 405, headers: {allow: POST}, json: {detail: Method Not Allowed}}
+---
+name: batches are not served
+request: {path: /anthropic/v1/messages/batches}
+mocks: []
+expect: {status: 404, json: {detail: Not Found}}
+---
+name: an encoded route path is served
+request: {path: /anthropic/v1/mess%61ges}

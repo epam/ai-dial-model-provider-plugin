@@ -1,0 +1,24 @@
+# Configuration that looks odd and is served.
+---
+name: unknown extra data member ignored
+request:
+  headers: {X-Upstream-Extra-Data: '{"region":"us-west-2","x":1}'}
+mocks:
+- request:
+    headers: {authorization: {$regex: '/us-west-2/bedrock/aws4_request'}}
+---
+name: region from extra data without a default
+server: {env: {AWS_DEFAULT_REGION: !delete }}
+request:
+  headers: {X-Upstream-Extra-Data: '{"region":"us-west-2"}'}
+mocks:
+- request:
+    headers: {authorization: {$regex: '/us-west-2/bedrock/aws4_request'}}
+---
+name: null credential member clears its default
+request:
+  headers: {X-Upstream-Extra-Data: '{"aws_access_key_id":null}'}
+---
+name: empty region is signed for us-east-1
+request:
+  headers: {X-Upstream-Extra-Data: '{"region":""}'}

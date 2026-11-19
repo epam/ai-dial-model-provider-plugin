@@ -1,0 +1,122 @@
+plugins {
+    id 'com.diffplug.spotless' version '7.0.2'
+}
+
+repositories {
+    mavenCentral() // Spotless downloads the formatter from here
+}
+
+spotless {
+    java {
+        target '*/src/**/*.java' // every module, plugin/ included
+        // .vscode/settings.json pins the same version: change both together.
+        palantirJavaFormat('2.72.0')
+    }
+}
+
+subprojects {
+    group = 'com.epam.aidial'
+    version = '0.0.0'
+
+    apply plugin: 'java'
+    apply plugin: 'checkstyle'
+    apply plugin: 'pmd'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(25)
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs += ['-Xlint:deprecation']
+    }
+
+    checkstyle {
+        configDirectory = file("$rootProject.projectDir/checkstyle")
+        maxWarnings = 0
+    }
+
+    pmd {
+        toolVersion = '7.28.0'
+        ruleSets = []
+        ruleSetFiles = files("$rootProject.projectDir/pmd/ruleset.xml")
+        consoleOutput = true
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    configurations.configureEach {
+        exclude group: 'io.netty', module: 'netty-transport-native-epoll'
+        resolutionStrategy {
+            // As ai-dial-core forces them: the patched versions of what google-auth and the AWS SDK bring.
+            force "com.google.guava:guava:${guava_version}"
+            force "org.apache.httpcomponents.core5:httpcore5:${apache_httpcore5_version}"
+            force "org.apache.httpcomponents.core5:httpcore5-h2:${apache_httpcore5_version}"
+            force "org.apache.httpcomponents.client5:httpclient5:${apache_httpclient5_version}"
+        }
+        resolutionStrategy.eachDependency { details ->
+            // One patched Netty for the whole graph, as ai-dial-core forces it; netty-tcnative has its own version line.
+            if (details.requested.group == 'io.netty' && !details.requested.name.startsWith('netty-tcnative')) {
+                details.useVersion(netty_version)
+            }
+            // As ai-dial-core forces them: reactor and reactor-netty come with azure-identity's HTTP client.
+            if (details.requested.group == 'io.projectreactor' && details.requested.name == 'reactor-core') {
+                details.useVersion(reactor_core_version)
+            }
+            if (details.requested.group == 'io.projectreactor.netty') {
+                details.useVersion(reactor_netty_http_version)
+            }
+        }
+    }
+
+    dependencies {
+        // Resolve platform classes against the same JDK used to compile the sources.
+        pmdAux files(javaToolchains.launcherFor(java.toolchain)
+                .map { it.metadata.installationPath.file('lib/jrt-fs.jar') })
+        testImplementation platform("org.junit:junit-bom:${junit_version}")
+        testImplementation 'org.junit.jupiter:junit-jupiter'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    tasks.withType(Test).configureEach { testTask ->
+        // Netty loads its native transport with System.loadLibrary, which newer JDKs warn about otherwise.
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+        testLogging {
+            events 'failed'
+            exceptionFormat = 'full'
+        }
+        addTestListener(new TestListener() {
+            void beforeSuite(TestDescriptor suite) {}
+            void beforeTest(TestDescriptor test) {}
+            void afterTest(TestDescriptor test, TestResult result) {}
+            void afterSuite(TestDescriptor suite, TestResult result) {
+                if (suite.parent == null) { // the root suite: the whole task
+                    println "${testTask.path}: ${result.testCount} tests, ${result.successfulTestCount} passed, " +
+                            "${result.failedTestCount} failed, ${result.skippedTestCount} skipped"
+                }
+            }
+        })
+    }
+
+    test {
+        useJUnitPlatform {
+            // ./gradlew :provider:test -Pbench --tests '*PassthroughBench' runs the benchmarks, which print their numbers
+            if (project.hasProperty('bench')) {
+                includeTags 'bench'
+            } else {
+                excludeTags 'bench'
+            }
+        }
+        if (project.hasProperty('bench')) {
+            testLogging.showStandardStreams = true
+            outputs.upToDateWhen { false }
+        }
+        // The tests that time their own work fail while the lint takes the CPU.
+        mustRunAfter rootProject.subprojects.collect { it.tasks.withType(Checkstyle) },
+                rootProject.subprojects.collect { it.tasks.withType(Pmd) },
+                rootProject.tasks.named('spotlessJava')
+    }
+}

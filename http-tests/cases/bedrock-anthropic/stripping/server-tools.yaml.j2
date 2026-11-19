@@ -1,0 +1,68 @@
+# Bedrock lacks the advisor and web_search server tools: both are taken out of `tools`, on the invoke-model API and
+# Mantle; a custom or untyped tool of the same name stays, and `tools` is as received when none goes. The platform
+# keeps every tool. The cache breakpoint indexes the body DIAL Core sent, before a tool is dropped.
+{% set A = '{"type":"advisor_20260301","name":"advisor"}' %}
+{% set S = '{"type":"web_search_20250305","name":"web_search"}' %}
+{% set G = '{"name":"get","input_schema":{"type":"object"}}' %}
+{% set CS = '{"type":"custom","name":"web_search"}' %}
+{% set US = '{"name":"web_search"}' %}
+{# title, received, kept on Bedrock #}
+{% set scenarios = [
+  ["advisor among tools", [A, G], [G]],
+  ["web_search among tools", [S, G], [G]],
+  ["advisor and web_search", [A, S, G], [G]],
+  ["only server tools", [A, S], []],
+  ["custom and untyped web_search kept", [S, CS, US, G], [CS, US, G]],
+] %}
+{% set clouds = {
+  "invoke": {
+    "headers": {}, "path": "/bedrock/model/anthropic.claude-x/invoke", "strips": true,
+    "head": '{"tools":', "tail": ',"messages":[],"anthropic_version":"bedrock-2023-05-31"}',
+  },
+  "mantle": {
+    "headers": {"X-Upstream-Extra-Data": '{"claude_client":"mantle"}'}, "path": "/mantle/v1/messages", "strips": true,
+    "head": '{"model":"anthropic.claude-x","tools":', "tail": ',"messages":[]}',
+  },
+  "platform": {
+    "headers": {"X-Upstream-Key": "k"}, "path": "/platform/v1/messages", "strips": false,
+    "head": '{"model":"anthropic.claude-x","tools":', "tail": ',"messages":[]}',
+  },
+} %}
+{% for cloud, c in clouds.items() %}
+{% for title, tools, kept in scenarios %}
+---
+name: {{ (cloud ~ " " ~ title) | tojson }}
+request:
+  headers: {{ c.headers | tojson }}
+  body: {{ ('{"model":"anthropic.claude-x","tools":[' ~ tools | join(",") ~ '],"messages":[]}') | tojson }}
+mocks:
+- request:
+    path: {{ c.path | tojson }}
+    body: {{ (c.head ~ "[" ~ ((kept if c.strips else tools) | join(",")) ~ "]" ~ c.tail) | tojson }}
+{% endfor %}
+{% endfor %}
+---
+name: invoke tools untouched when none is stripped
+request:
+  body: '{ "model":"anthropic.claude-x", "tools" : [ {"name":"get"} , {"name":"put"} ], "messages":[] }'
+mocks:
+- request:
+    body: '{"tools":[ {"name":"get"} , {"name":"put"} ],"messages":[],"anthropic_version":"bedrock-2023-05-31"}'
+---
+name: mantle body untouched when no tool is stripped
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle"}'}
+  body: '{ "model":"anthropic.claude-x", "tools" : [ {"name":"get"} ], "messages":[] }'
+mocks:
+- request:
+    path: /mantle/v1/messages
+    body: '{ "model":"anthropic.claude-x", "tools" : [ {"name":"get"} ], "messages":[] }'
+---
+name: invoke cache breakpoint indexes the tools DIAL Core sent
+request:
+  body: '{"model":"anthropic.claude-x","tools":[{"type":"web_search_20250305","name":"web_search"},{"name":"get","input_schema":{"type":"object"},"cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[]}'
+mocks:
+- request:
+    body: '{"tools":[{"name":"get","input_schema":{"type":"object"},"cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[],"anthropic_version":"bedrock-2023-05-31"}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.tools[1]', x-dial-cache-expire-at: '4600'}

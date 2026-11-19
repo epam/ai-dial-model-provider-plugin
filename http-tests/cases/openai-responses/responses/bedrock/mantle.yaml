@@ -1,0 +1,42 @@
+# Bedrock Mantle's auth: the key as a bearer token, or SigV4 with the extra data's keys; a custom Authorization, an
+# empty key and blank keys refused.
+---
+name: mantle key
+---
+name: mantle signed
+request:
+  headers:
+    X-Upstream-Key: !delete
+    X-Upstream-Extra-Data: '{"aws_access_key_id":"AKID2","aws_secret_access_key":"secret2"}'
+mocks:
+- request:
+    headers:
+      authorization: {$regex: '^AWS4-HMAC-SHA256 Credential=AKID2/\d{8}/us-east-1/bedrock-mantle/aws4_request, '}
+      # the body's SHA-256
+      x-amz-content-sha256: 49bb5ce66b2215f7193979d0ab5c1088e42046dcd9546f0e0780f3eb628e2721
+---
+name: mantle custom authorization
+request:
+  headers:
+    X-Upstream-Extra-Data: '{"headers_to_proxy":["authorization"]}'
+    Authorization: Bearer mine
+mocks: []
+expect:
+  status: 500
+  json:
+    error:
+      message: Bedrock provider authentication cannot be combined with a custom `Authorization` header.
+      type: internal_server_error
+      code: '500'
+---
+name: mantle empty key
+request:
+  headers: {X-Upstream-Key: ''}
+mocks: []
+expect: {status: 500, body: !delete }
+---
+name: mantle blank keys
+request:
+  headers: {X-Upstream-Key: !delete , X-Upstream-Extra-Data: '{"aws_access_key_id":" ","aws_secret_access_key":"s"}'}
+mocks: []
+expect: {status: !delete , body: {$regex: Static AWS credentials require non-empty}}

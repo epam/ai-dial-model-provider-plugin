@@ -1,0 +1,20 @@
+# A streaming request: stream true goes to the upstream (Vertex AI: streamRawPredict, the stream member kept), and the
+# upstream's SSE comes back event by event, unchanged.
+request:
+  body: '{"model":"claude-x","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+mocks:
+- request:
+    path: /vertex/projects/p/locations/us-east5/publishers/anthropic/models/claude-x:streamRawPredict
+    body: '{"stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}],"anthropic_version":"vertex-2023-10-16"}'
+  response:
+    headers: {Content-Type: text/event-stream}
+    body: !delete
+    sse: {events: !ref /_lib/anthropic-stream.yaml:events}
+expect:
+  headers: {content-type: {$regex: '^text/event-stream'}}
+  body: !delete
+  sse:
+    events: !ref /_lib/anthropic-stream.yaml:events
+    termination: complete
+    aggregate:
+    - {type: concat, path: delta.text, equals: Hello}

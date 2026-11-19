@@ -1,0 +1,31 @@
+# A request that needs an Azure AD token and cannot get one is a 401 without a call, whatever the endpoint it is for.
+---
+name: azure ad token failure of messages is a 401
+server: {stubs: {azure_ad_error: boom}}
+request: {headers: {X-Upstream-Endpoint: 'https://r.services.ai.azure.com/anthropic/v1/messages', X-Upstream-Key: !delete }}
+mocks: []
+expect:
+  status: 401
+  headers: {content-type: application/json}
+  body: "{\"error\":{\"message\":\"Authentication failed\",\"type\":\"authentication_error\"},\"type\":\"error\"}\n"
+---
+name: azure ad token failure of count_tokens is a 401
+server: {stubs: {azure_ad_error: boom}}
+request:
+  path: /anthropic/v1/messages/count_tokens
+  headers: {X-Upstream-Endpoint: 'https://r.services.ai.azure.com/anthropic/v1/messages', X-Upstream-Key: !delete }
+mocks: []
+expect:
+  status: 401
+  body: "{\"error\":{\"message\":\"Authentication failed\",\"type\":\"authentication_error\"},\"type\":\"error\"}\n"
+---
+name: azure ad token failure of a stream is a 401 too
+server: {stubs: {azure_ad_error: boom}}
+request:
+  headers: {X-Upstream-Endpoint: 'https://r.services.ai.azure.com/anthropic/v1/messages', X-Upstream-Key: !delete }
+  body: '{"model":"claude-x","stream":true,"messages":[]}'
+mocks: []
+expect:
+  status: 401
+  headers: {content-type: application/json}
+  body: "{\"error\":{\"message\":\"Authentication failed\",\"type\":\"authentication_error\"},\"type\":\"error\"}\n"

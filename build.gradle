@@ -73,11 +73,10 @@ subprojects {
     }
 
     dependencies {
-        // Checkstyle's own transitive dependencies, patched (it has no release that brings them: Doxia 1.12 stays).
         constraints {
-            checkstyle("commons-beanutils:commons-beanutils:${commons_beanutils_version}") { because 'CVE-2025-48734' }
-            checkstyle("org.apache.commons:commons-lang3:${commons_lang3_version}") { because 'CVE-2025-48924' }
-            checkstyle("org.codehaus.plexus:plexus-utils:${plexus_utils_version}") { because 'CVE-2025-67030' }
+            checkstyle("commons-beanutils:commons-beanutils:${commons_beanutils_version}")
+            checkstyle("org.apache.commons:commons-lang3:${commons_lang3_version}")
+            checkstyle("org.codehaus.plexus:plexus-utils:${plexus_utils_version}")
         }
         // Resolve platform classes against the same JDK used to compile the sources.
         pmdAux files(javaToolchains.launcherFor(java.toolchain)

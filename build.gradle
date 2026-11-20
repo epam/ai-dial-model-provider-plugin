@@ -1,5 +1,5 @@
 plugins {
-    id 'com.diffplug.spotless' version '7.0.2'
+    id 'com.diffplug.spotless' version '7.2.1'
 }
 
 repositories {
@@ -73,6 +73,11 @@ subprojects {
     }
 
     dependencies {
+        constraints {
+            checkstyle("commons-beanutils:commons-beanutils:${commons_beanutils_version}")
+            checkstyle("org.apache.commons:commons-lang3:${commons_lang3_version}")
+            checkstyle("org.codehaus.plexus:plexus-utils:${plexus_utils_version}")
+        }
         // Resolve platform classes against the same JDK used to compile the sources.
         pmdAux files(javaToolchains.launcherFor(java.toolchain)
                 .map { it.metadata.installationPath.file('lib/jrt-fs.jar') })

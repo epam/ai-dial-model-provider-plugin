@@ -67,3 +67,24 @@ expect: {status: 500, json: !replace {type: error, error: {type: api_error, mess
 name: failed response without an error
 mocks: [{response: {json: {status: failed}}}]
 expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: The Responses API response has failed}}}
+
+---
+name: failed response of a rate limit is a 429
+mocks: [{response: {json: {status: failed, error: {code: rate_limit_exceeded, message: slow}}}}]
+expect: {status: 429, json: !replace {type: error, error: {type: rate_limit_error, message: slow}}}
+---
+name: failed response of a vector store timeout is a 504
+mocks: [{response: {json: {status: failed, error: {code: vector_store_timeout, message: late}}}}]
+expect: {status: 504, json: !replace {type: error, error: {type: timeout_error, message: late}}}
+---
+name: failed response of an invalid prompt is a 400
+mocks: [{response: {json: {status: failed, error: {code: invalid_prompt, message: bad prompt}}}}]
+expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: bad prompt}}}
+---
+name: failed response of a context that is too long is a 400
+mocks: [{response: {json: {status: failed, error: {code: context_length_exceeded, message: long}}}}]
+expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: long}}}
+---
+name: failed response of a code the translator does not know is a 500
+mocks: [{response: {json: {status: failed, error: {code: future_code, message: odd}}}}]
+expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: odd}}}

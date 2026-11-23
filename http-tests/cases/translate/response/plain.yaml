@@ -36,11 +36,11 @@ mocks:
 ---
 name: usage is the tokens of the response
 mocks: [{response: {json: {usage: {input_tokens: 7, output_tokens: 3}}}}]
-expect: {json: {usage: {input_tokens: 7, output_tokens: 3}}}
+expect: {json: {usage: {input_tokens: 7, output_tokens: 3, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens_details: {thinking_tokens: 0}}}}
 ---
 name: no usage is zero tokens
 mocks: [{response: {json: {usage: !delete }}}]
-expect: {json: {usage: {input_tokens: 0, output_tokens: 0}}}
+expect: {json: {usage: !replace {input_tokens: 0, output_tokens: 0}}}
 ---
 name: refusal is a text block
 mocks:
@@ -48,4 +48,4 @@ mocks:
     json:
       output: !replace
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: refusal, refusal: I cannot}]}
-expect: {json: {content: [{type: text, text: I cannot}]}}
+expect: {json: {content: [{type: text, text: I cannot}], stop_reason: refusal}}

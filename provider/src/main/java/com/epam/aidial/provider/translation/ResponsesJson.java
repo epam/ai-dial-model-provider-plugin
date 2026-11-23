@@ -11,6 +11,7 @@ import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseStreamEvent;
 import java.io.IOException;
+import java.util.Optional;
 
 /**
  * The OpenAI SDK's models behind one small door, as {@link AnthropicJson} is the Anthropic SDK's. What the upstream
@@ -46,6 +47,40 @@ public final class ResponsesJson {
             return 0;
         }
         return field.asKnown().orElseThrow(() -> new OpenAIInvalidDataException(name + " is not a number"));
+    }
+
+    /** The {@code type} of an output item or content part as sent, if it has one. */
+    public static Optional<String> type(Optional<JsonValue> raw) {
+        return raw.flatMap(value -> field(value).asObject())
+                .flatMap(object -> Optional.ofNullable(object.get("type")))
+                .flatMap(type -> field(type).asString());
+    }
+
+    /**
+     * The {@code type} as sent.
+     *
+     * @throws OpenAIInvalidDataException if there is none
+     */
+    public static String requiredType(Optional<JsonValue> raw, String what) {
+        return type(raw).orElseThrow(() -> new OpenAIInvalidDataException(what + " has no type"));
+    }
+
+    /**
+     * A nested object: empty if absent or null.
+     *
+     * @throws OpenAIInvalidDataException if it is not an object of the type
+     */
+    public static <T> Optional<T> object(JsonField<T> field, String name) {
+        if (field.isMissing() || field.isNull()) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                field.asKnown().orElseThrow(() -> new OpenAIInvalidDataException(name + " is not an object")));
+    }
+
+    /** {@link JsonValue} extends the raw {@code JsonField}: through this its accessors keep their types. */
+    private static JsonField<?> field(JsonValue value) {
+        return value;
     }
 
     /** Data after the value is an error, as the mapper alone does not take it. */

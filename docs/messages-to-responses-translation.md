@@ -184,8 +184,17 @@ The message is sparse: `id`, `type`, `role`, `model`, `content`, `stop_reason`, 
   `stop_reason` `tool_use`; the tool's own name comes back (see above).
 - A URL cited by an output text, the first time it is cited in the answer, is a `web_search_result` of a `web_search_tool_result`,
   which follows the text, with the `server_tool_use` it answers (`input.query` is empty: the search is not known).
-- `usage` is `input_tokens` and `output_tokens`; zeros without a `usage`.
-- An output item or content part this page does not list is dropped, with a warning in the log.
+- `stop_reason`: `max_tokens` when the response is incomplete because of `max_output_tokens`, `refusal` when it is
+  because of `content_filter`; otherwise `tool_use` if it holds a function call, else `refusal` if it holds a refusal,
+  else `end_turn`. A tool call that was cut by the output budget is `max_tokens`.
+- `usage` counts as Anthropic does: `input_tokens` leaves out what the cache read and wrote, which the Responses API's
+  `input_tokens` includes. `cache_read_input_tokens` is `input_tokens_details.cached_tokens` (at most the input tokens),
+  `cache_creation_input_tokens` is `cache_write_tokens` (at most what the reads left), `output_tokens_details.thinking_tokens`
+  is `reasoning_tokens`, and `server_tool_use` counts the `web_search_call` items (`web_search_requests` a search,
+  `web_fetch_requests` the opening of a page), when there are any. A missing counter is 0; with no `usage` at all the
+  message says `input_tokens` and `output_tokens` of 0 and nothing else.
+- An output item or content part this page does not list is dropped, with a warning in the log; so is an unknown value
+  of an enumeration. Only what the translator reads is checked: a field it never looks at may be of any type.
 
 ## Failures
 
@@ -196,7 +205,10 @@ Everything the client sees is in the Anthropic API's error body, `{"type":"error
   follows the status: 400 `invalid_request_error`, 401 `authentication_error`, 402 `billing_error`, 403
   `permission_error`, 404 `not_found_error`, 409 `conflict_error`, 413 `request_too_large`, 429 `rate_limit_error`, 504
   `timeout_error`, 503 `overloaded_error`, any other 4xx `invalid_request_error`, anything else `api_error`.
-- The response says `status: failed`: a `500` with its error message.
+- The response says `status: failed`: its error message, with a status by the error code: `rate_limit_exceeded` 429,
+  `vector_store_timeout` 504, the codes that blame the request (`invalid_prompt`, `context_length_exceeded`, the
+  `invalid_image...` ones and so on) 400, any other code or none 500.
 - The upstream's answer is not a Responses API response (not JSON, no `output`, a token count that is no number): a
-  `500` with the message "Internal server error"; the detail is logged, never sent.
+  `500` with the message "Internal server error"; the detail is logged, never sent. An item or content part with no
+  `type` is such an answer.
 - `count_tokens` is not served for a Responses API upstream: `404`, "Endpoint not supported".

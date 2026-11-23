@@ -3,6 +3,7 @@ package com.epam.aidial.provider.translation;
 import com.epam.aidial.provider.json.Json;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseFunctionToolCall;
+import com.openai.models.responses.ResponseFunctionWebSearch;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseOutputText;
@@ -22,6 +23,10 @@ import org.slf4j.LoggerFactory;
 /**
  * The Responses API response as a Messages API message, sparse: only the fields set (no {@code stop_sequence}, a
  * {@code usage} of what is known). Pure.
+ *
+ * <p>Items and parts are told by their {@code type} as sent: the SDK's union takes an item that is none of its types
+ * for the one it resembles most. A type the translator does not know is dropped, with a warning; one that has no type
+ * is not a Responses API item.
  */
 final class ResponseTranslator {
 
@@ -40,17 +45,22 @@ final class ResponseTranslator {
         }
         List<Map<String, Object>> content = new ArrayList<>();
         boolean hasToolCall = false;
+        boolean isRefusal = false;
         Set<String> seenUrls = new HashSet<>();
         for (ResponseOutputItem item : response.output()) {
-            if (item.reasoning().isPresent()) {
-                thinkingBlock(item.reasoning().get()).ifPresent(content::add);
-            } else if (item.message().isPresent()) {
-                messageBlocks(item.message().get(), seenUrls, content);
-            } else if (item.functionCall().isPresent()) {
-                hasToolCall = true;
-                content.add(toolUse(item.functionCall().get(), names));
-            } else {
-                log.warn("Dropping an unsupported Responses API output item");
+            String type = ResponsesJson.requiredType(item._json(), "output item");
+            switch (type) {
+                case "reasoning" ->
+                    item.reasoning().flatMap(ResponseTranslator::thinkingBlock).ifPresent(content::add);
+                case "message" -> {
+                    ResponseOutputMessage message = item.message().orElseThrow();
+                    isRefusal |= messageBlocks(message, seenUrls, content);
+                }
+                case "function_call" -> {
+                    hasToolCall = true;
+                    content.add(toolUse(item.functionCall().orElseThrow(), names));
+                }
+                default -> log.warn("Dropping an unsupported Responses API output item: {}", type);
             }
         }
         if (content.isEmpty()) {
@@ -62,9 +72,28 @@ final class ResponseTranslator {
         message.put("role", "assistant");
         message.put("model", model);
         message.put("content", content);
-        message.put("stop_reason", hasToolCall ? "tool_use" : "end_turn");
+        message.put("stop_reason", stopReason(incompleteReason(response), hasToolCall, isRefusal));
         message.put("usage", usage(response));
         return message;
+    }
+
+    private static Optional<String> incompleteReason(Response response) {
+        return response.incompleteDetails().flatMap(details -> details.reason()).map(reason -> reason.asString());
+    }
+
+    /** What the answer was cut by, if it was; else what it holds: a tool call, a refusal, or neither. */
+    static String stopReason(Optional<String> incompleteReason, boolean hasToolCall, boolean isRefusal) {
+        String reason = incompleteReason.orElse("");
+        if (reason.equals("max_output_tokens")) {
+            return "max_tokens";
+        }
+        if (reason.equals("content_filter")) {
+            return "refusal";
+        }
+        if (hasToolCall) {
+            return "tool_use";
+        }
+        return isRefusal ? "refusal" : "end_turn";
     }
 
     /**
@@ -95,22 +124,29 @@ final class ResponseTranslator {
         return Optional.of(block);
     }
 
-    private static void messageBlocks(
+    /** The blocks of a message; whether it holds a refusal. */
+    private static boolean messageBlocks(
             ResponseOutputMessage message, Set<String> seenUrls, List<Map<String, Object>> content) {
+        boolean isRefusal = false;
         for (ResponseOutputMessage.Content part : message.content()) {
-            ResponseOutputText text = part.outputText().orElse(null);
-            if (text != null) {
-                content.add(textBlock(text.text()));
-                content.addAll(WebSearchBlocks.of(newCitations(text, seenUrls)));
-            } else if (part.refusal().isPresent()) {
-                content.add(textBlock(part.refusal().get().refusal()));
-            } else {
-                log.warn("Dropping an unsupported Responses API content part");
+            String type = ResponsesJson.requiredType(part._json(), "output content part");
+            switch (type) {
+                case "output_text" -> {
+                    ResponseOutputText text = part.outputText().orElseThrow();
+                    content.add(textBlock(text.text()));
+                    content.addAll(WebSearchBlocks.of(newCitations(text, seenUrls)));
+                }
+                case "refusal" -> {
+                    isRefusal = true;
+                    content.add(textBlock(part.refusal().orElseThrow().refusal()));
+                }
+                default -> log.warn("Dropping an unsupported Responses API content part: {}", type);
             }
         }
+        return isRefusal;
     }
 
-    /** The URL citations of a text that no text before it cited: (url, title). */
+    /** The URL citations of a text that no text before it cited. */
     private static List<WebSearchBlocks.Citation> newCitations(ResponseOutputText text, Set<String> seenUrls) {
         List<WebSearchBlocks.Citation> citations = new ArrayList<>();
         for (ResponseOutputText.Annotation annotation : text.annotations()) {
@@ -150,19 +186,77 @@ final class ResponseTranslator {
     }
 
     private static ResponseFailedException failure(Response response) {
-        String message = response.error().map(error -> error.message()).orElse("The Responses API response has failed");
-        return new ResponseFailedException(500, message);
+        return response.error()
+                .map(error -> new ResponseFailedException(
+                        ErrorCodes.status(error._code()
+                                .asKnown()
+                                .map(code -> code.asString())
+                                .orElse("")),
+                        error.message()))
+                .orElseGet(() -> new ResponseFailedException(500, "The Responses API response has failed"));
     }
 
+    /**
+     * The tokens, as Anthropic counts them: {@code input_tokens} excludes the cache reads and writes, which the
+     * Responses API's include, so the breakdown is capped for the counters to add up.
+     */
     private static Map<String, Object> usage(Response response) {
         Map<String, Object> usage = new LinkedHashMap<>();
         ResponseUsage tokens = response.usage().orElse(null);
-        usage.put(
-                "input_tokens", tokens == null ? 0 : ResponsesJson.count(tokens._inputTokens(), "usage.input_tokens"));
-        usage.put(
-                "output_tokens",
-                tokens == null ? 0 : ResponsesJson.count(tokens._outputTokens(), "usage.output_tokens"));
+        if (tokens == null) {
+            usage.put("input_tokens", 0);
+            usage.put("output_tokens", 0);
+            return usage;
+        }
+        long input = ResponsesJson.count(tokens._inputTokens(), "usage.input_tokens");
+        ResponseUsage.InputTokensDetails inputDetails = ResponsesJson.object(
+                        tokens._inputTokensDetails(), "usage.input_tokens_details")
+                .orElse(null);
+        long cached = inputDetails == null
+                ? 0
+                : ResponsesJson.count(inputDetails._cachedTokens(), "usage.input_tokens_details.cached_tokens");
+        long written = inputDetails == null
+                ? 0
+                : ResponsesJson.count(
+                        inputDetails._cacheWriteTokens(), "usage.input_tokens_details.cache_write_tokens");
+        long cacheRead = Math.min(cached, input);
+        long cacheWrite = Math.min(written, input - cacheRead);
+        long thinking = ResponsesJson.object(tokens._outputTokensDetails(), "usage.output_tokens_details")
+                .map(details ->
+                        ResponsesJson.count(details._reasoningTokens(), "usage.output_tokens_details.reasoning_tokens"))
+                .orElse(0L);
+        usage.put("input_tokens", input - cacheRead - cacheWrite);
+        usage.put("output_tokens", ResponsesJson.count(tokens._outputTokens(), "usage.output_tokens"));
+        usage.put("cache_read_input_tokens", cacheRead);
+        usage.put("cache_creation_input_tokens", cacheWrite);
+        usage.put("output_tokens_details", Map.of("thinking_tokens", thinking));
+        webSearchCounts(response.output()).ifPresent(counts -> usage.put("server_tool_use", counts));
         return usage;
+    }
+
+    /** What the web search calls of the answer did: a search, or the opening of a page. None, if there were none. */
+    static Optional<Map<String, Object>> webSearchCounts(List<ResponseOutputItem> output) {
+        long searches = 0;
+        long fetches = 0;
+        for (ResponseOutputItem item : output) {
+            if (!"web_search_call".equals(ResponsesJson.type(item._json()).orElse(""))) {
+                continue;
+            }
+            ResponseFunctionWebSearch call = item.webSearchCall().orElseThrow();
+            Optional<ResponseFunctionWebSearch.Action> action = ResponsesJson.object(call._action(), "action");
+            if (action.isPresent() && action.get().search().isPresent()) {
+                searches++;
+            } else if (action.isPresent() && action.get().openPage().isPresent()) {
+                fetches++;
+            }
+        }
+        if (searches == 0 && fetches == 0) {
+            return Optional.empty();
+        }
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("web_search_requests", searches);
+        counts.put("web_fetch_requests", fetches);
+        return Optional.of(counts);
     }
 
     private static Map<String, Object> textBlock(String text) {

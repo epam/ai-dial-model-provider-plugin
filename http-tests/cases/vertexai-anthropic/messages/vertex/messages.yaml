@@ -124,3 +124,12 @@ mocks:
     body: '{"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}],"anthropic_version":"vertex-2023-10-16"}'
   response: {status: 201}
 expect: {status: 201, headers: {x-dial-*: {$absent: true}}}
+---
+name: vertex cache breakpoint follows the prompt order, not the body order
+request:
+  body: '{"model":"claude-x","system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}],"tools":[{"name":"get","cache_control":{"type":"ephemeral"}}]}'
+mocks:
+- request:
+    body: '{"system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}],"tools":[{"name":"get","cache_control":{"type":"ephemeral"}}],"anthropic_version":"vertex-2023-10-16"}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.system[0]', x-dial-cache-expire-at: '1300'}

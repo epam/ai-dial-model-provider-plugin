@@ -103,3 +103,17 @@ expect:
   status: 500
   headers: {content-type: application/json}
   json: {error: {code: '500', message: Internal server error, type: internal_server_error}}
+---
+name: cancel of a synchronous response relays the upstream's error as it is, null members included
+request: {path: /openai/v1/responses/resp_1/cancel, body: !delete }
+mocks:
+- request: {path: /v1/responses/resp_1/cancel, body: ''}
+  response:
+    status: 400
+    headers: {Content-Type: application/json}
+    json: {error: {message: Cannot cancel a synchronous response., type: invalid_request_error, param: null, code: null}}
+expect:
+  status: 400
+  headers: {content-type: application/json}
+  body: !delete
+  json: {error: {message: Cannot cancel a synchronous response., type: invalid_request_error, param: null, code: null}}

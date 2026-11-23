@@ -105,8 +105,8 @@ public final class MessagesOverResponses implements ModelProvider {
                 return relayedError(answer, body);
             }
             Response response = ResponsesJson.parseResponse(body);
-            AdapterResponse message =
-                    AdapterResponse.json(200, Json.encode(ResponseTranslator.message(response, deployment, names)));
+            AdapterResponse message = AdapterResponse.json(
+                    200, AnthropicJson.write(ResponseTranslator.message(response, deployment, names)));
             copyHeaders(answer.headers(), message.headers());
             cacheHeaders(answer.headers(), message.headers(), cachePaths);
             return message;

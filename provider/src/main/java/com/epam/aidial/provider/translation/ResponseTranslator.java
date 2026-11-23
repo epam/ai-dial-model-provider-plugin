@@ -1,5 +1,13 @@
 package com.epam.aidial.provider.translation;
 
+import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.ContentBlock;
+import com.anthropic.models.messages.Message;
+import com.anthropic.models.messages.Model;
+import com.anthropic.models.messages.OutputTokensDetails;
+import com.anthropic.models.messages.ServerToolUsage;
+import com.anthropic.models.messages.StopReason;
+import com.anthropic.models.messages.Usage;
 import com.epam.aidial.provider.json.Json;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseFunctionToolCall;
@@ -21,8 +29,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The Responses API response as a Messages API message, sparse: only the fields set (no {@code stop_sequence}, a
- * {@code usage} of what is known). Pure.
+ * The Responses API response as a Messages API message, built with the Anthropic SDK's models. What the Responses API
+ * does not say is null, as the SDK has it (the {@code container}, the {@code stop_sequence}, the {@code usage}'s {@code
+ * service_tier}, ...). Pure.
  *
  * <p>Items and parts are told by their {@code type} as sent: the SDK's union takes an item that is none of its types
  * for the one it resembles most. A type the translator does not know is dropped, with a warning; one that has no type
@@ -39,11 +48,11 @@ final class ResponseTranslator {
      * @throws ResponseFailedException when the response is a failed one
      * @throws com.openai.errors.OpenAIInvalidDataException when a field it reads is missing or mistyped
      */
-    static Map<String, Object> message(Response response, String model, ToolNames names) {
+    static Message message(Response response, String model, ToolNames names) {
         if (response.status().map(status -> status.asString().equals("failed")).orElse(false)) {
             throw failure(response);
         }
-        List<Map<String, Object>> content = new ArrayList<>();
+        List<ContentBlock> content = new ArrayList<>();
         boolean hasToolCall = false;
         boolean isRefusal = false;
         Set<String> seenUrls = new HashSet<>();
@@ -64,17 +73,24 @@ final class ResponseTranslator {
             }
         }
         if (content.isEmpty()) {
-            content.add(textBlock(""));
+            content.add(Blocks.text(""));
         }
-        Map<String, Object> message = new LinkedHashMap<>();
-        message.put("id", response.id());
-        message.put("type", "message");
-        message.put("role", "assistant");
-        message.put("model", model);
-        message.put("content", content);
-        message.put("stop_reason", stopReason(incompleteReason(response), hasToolCall, isRefusal));
-        message.put("usage", usage(response));
-        return message;
+        return messageBuilder(response.id(), model)
+                .content(content)
+                .stopReason(stopReason(incompleteReason(response), hasToolCall, isRefusal))
+                .usage(usage(response))
+                .build();
+    }
+
+    /** A message with what the translator never says (the container, the stop sequence, ...) said to be null. */
+    static Message.Builder messageBuilder(String id, String model) {
+        return Message.builder()
+                .id(id)
+                .model(Model.of(model))
+                .container(Optional.empty())
+                .diagnostics(Optional.empty())
+                .stopDetails(Optional.empty())
+                .stopSequence(Optional.empty());
     }
 
     static Optional<String> incompleteReason(Response response) {
@@ -82,18 +98,18 @@ final class ResponseTranslator {
     }
 
     /** What the answer was cut by, if it was; else what it holds: a tool call, a refusal, or neither. */
-    static String stopReason(Optional<String> incompleteReason, boolean hasToolCall, boolean isRefusal) {
+    static StopReason stopReason(Optional<String> incompleteReason, boolean hasToolCall, boolean isRefusal) {
         String reason = incompleteReason.orElse("");
         if (reason.equals("max_output_tokens")) {
-            return "max_tokens";
+            return StopReason.MAX_TOKENS;
         }
         if (reason.equals("content_filter")) {
-            return "refusal";
+            return StopReason.REFUSAL;
         }
         if (hasToolCall) {
-            return "tool_use";
+            return StopReason.TOOL_USE;
         }
-        return isRefusal ? "refusal" : "end_turn";
+        return isRefusal ? StopReason.REFUSAL : StopReason.END_TURN;
     }
 
     /**
@@ -101,7 +117,7 @@ final class ResponseTranslator {
      * content as the signature, the wrapper that lets the next turn replay it. Without text, the encrypted content is a
      * redacted block; without either, nothing.
      */
-    static Optional<Map<String, Object>> thinkingBlock(ResponseReasoningItem item) {
+    static Optional<ContentBlock> thinkingBlock(ResponseReasoningItem item) {
         List<String> texts = new ArrayList<>();
         item.summary().forEach(part -> texts.add(part.text()));
         item.content().ifPresent(parts -> parts.forEach(part -> texts.add(part.text())));
@@ -110,35 +126,27 @@ final class ResponseTranslator {
                 .filter(encrypted -> !encrypted.isEmpty())
                 .map(encrypted -> new ReasoningWrapper(item.id(), encrypted).encode())
                 .orElse("");
-        Map<String, Object> block = new LinkedHashMap<>();
         if (!text.isEmpty()) {
-            block.put("type", "thinking");
-            block.put("thinking", text);
-            block.put("signature", signature);
-        } else if (!signature.isEmpty()) {
-            block.put("type", "redacted_thinking");
-            block.put("data", signature);
-        } else {
-            return Optional.empty();
+            return Optional.of(Blocks.thinking(text, signature));
         }
-        return Optional.of(block);
+        return signature.isEmpty() ? Optional.empty() : Optional.of(Blocks.redactedThinking(signature));
     }
 
     /** The blocks of a message; whether it holds a refusal. */
     private static boolean messageBlocks(
-            ResponseOutputMessage message, Set<String> seenUrls, List<Map<String, Object>> content) {
+            ResponseOutputMessage message, Set<String> seenUrls, List<ContentBlock> content) {
         boolean isRefusal = false;
         for (ResponseOutputMessage.Content part : message.content()) {
             String type = ResponsesJson.requiredType(part._json(), "output content part");
             switch (type) {
                 case "output_text" -> {
                     ResponseOutputText text = part.outputText().orElseThrow();
-                    content.add(textBlock(text.text()));
+                    content.add(Blocks.text(text.text()));
                     content.addAll(WebSearchBlocks.of(newCitations(text, seenUrls)));
                 }
                 case "refusal" -> {
                     isRefusal = true;
-                    content.add(textBlock(part.refusal().orElseThrow().refusal()));
+                    content.add(Blocks.text(part.refusal().orElseThrow().refusal()));
                 }
                 default -> log.warn("Dropping an unsupported Responses API content part: {}", type);
             }
@@ -153,7 +161,7 @@ final class ResponseTranslator {
     }
 
     /** The web search blocks for the URLs a finished message cites for the first time. */
-    static List<Map<String, Object>> citationBlocks(ResponseOutputMessage message, Set<String> seenUrls) {
+    static List<ContentBlock> citationBlocks(ResponseOutputMessage message, Set<String> seenUrls) {
         List<WebSearchBlocks.Citation> citations = new ArrayList<>();
         for (ResponseOutputMessage.Content part : message.content()) {
             if ("output_text".equals(ResponsesJson.type(part._json()).orElse(""))) {
@@ -176,13 +184,8 @@ final class ResponseTranslator {
         return citations;
     }
 
-    private static Map<String, Object> toolUse(ResponseFunctionToolCall call, ToolNames names) {
-        Map<String, Object> block = new LinkedHashMap<>();
-        block.put("type", "tool_use");
-        block.put("id", call.callId());
-        block.put("name", names.toClient(call.name()));
-        block.put("input", arguments(call.arguments()));
-        return block;
+    private static ContentBlock toolUse(ResponseFunctionToolCall call, ToolNames names) {
+        return Blocks.toolUse(call.callId(), names.toClient(call.name()), JsonValue.from(arguments(call.arguments())));
     }
 
     /** The arguments as an object; {@code {}} for what is none. */
@@ -215,15 +218,20 @@ final class ResponseTranslator {
 
     /**
      * The tokens, as Anthropic counts them: {@code input_tokens} excludes the cache reads and writes, which the
-     * Responses API's include, so the breakdown is capped for the counters to add up.
+     * Responses API's include, so the breakdown is capped for the counters to add up. With no usage at all, the tokens
+     * are 0 and the rest is not known.
      */
-    static Map<String, Object> usage(Response response) {
-        Map<String, Object> usage = new LinkedHashMap<>();
+    static Usage usage(Response response) {
         ResponseUsage tokens = response.usage().orElse(null);
         if (tokens == null) {
-            usage.put("input_tokens", 0);
-            usage.put("output_tokens", 0);
-            return usage;
+            return usageBuilder()
+                    .inputTokens(0)
+                    .outputTokens(0)
+                    .cacheReadInputTokens(Optional.empty())
+                    .cacheCreationInputTokens(Optional.empty())
+                    .outputTokensDetails(Optional.empty())
+                    .serverToolUse(Optional.empty())
+                    .build();
         }
         long input = ResponsesJson.count(tokens._inputTokens(), "usage.input_tokens");
         ResponseUsage.InputTokensDetails inputDetails = ResponsesJson.object(
@@ -242,17 +250,28 @@ final class ResponseTranslator {
                 .map(details ->
                         ResponsesJson.count(details._reasoningTokens(), "usage.output_tokens_details.reasoning_tokens"))
                 .orElse(0L);
-        usage.put("input_tokens", input - cacheRead - cacheWrite);
-        usage.put("output_tokens", ResponsesJson.count(tokens._outputTokens(), "usage.output_tokens"));
-        usage.put("cache_read_input_tokens", cacheRead);
-        usage.put("cache_creation_input_tokens", cacheWrite);
-        usage.put("output_tokens_details", Map.of("thinking_tokens", thinking));
-        webSearchCounts(response.output()).ifPresent(counts -> usage.put("server_tool_use", counts));
-        return usage;
+        return usageBuilder()
+                .inputTokens(input - cacheRead - cacheWrite)
+                .outputTokens(ResponsesJson.count(tokens._outputTokens(), "usage.output_tokens"))
+                .cacheReadInputTokens(cacheRead)
+                .cacheCreationInputTokens(cacheWrite)
+                .outputTokensDetails(
+                        OutputTokensDetails.builder().thinkingTokens(thinking).build())
+                .serverToolUse(webSearchCounts(response.output()))
+                .build();
+    }
+
+    /** A usage with what the translator never says (the cache's TTLs, the service tier, ...) said to be null. */
+    static Usage.Builder usageBuilder() {
+        return Usage.builder()
+                .cacheCreation(Optional.empty())
+                .inferenceGeo(Optional.empty())
+                .serviceTier(Optional.empty())
+                .speed(Optional.empty());
     }
 
     /** What the web search calls of the answer did: a search, or the opening of a page. None, if there were none. */
-    static Optional<Map<String, Object>> webSearchCounts(List<ResponseOutputItem> output) {
+    static Optional<ServerToolUsage> webSearchCounts(List<ResponseOutputItem> output) {
         long searches = 0;
         long fetches = 0;
         for (ResponseOutputItem item : output) {
@@ -270,17 +289,10 @@ final class ResponseTranslator {
         if (searches == 0 && fetches == 0) {
             return Optional.empty();
         }
-        Map<String, Object> counts = new LinkedHashMap<>();
-        counts.put("web_search_requests", searches);
-        counts.put("web_fetch_requests", fetches);
-        return Optional.of(counts);
-    }
-
-    private static Map<String, Object> textBlock(String text) {
-        Map<String, Object> block = new LinkedHashMap<>();
-        block.put("type", "text");
-        block.put("text", text);
-        return block;
+        return Optional.of(ServerToolUsage.builder()
+                .webSearchRequests(searches)
+                .webFetchRequests(fetches)
+                .build());
     }
 
     /** The response says it failed: the client gets the status the failure maps to. */

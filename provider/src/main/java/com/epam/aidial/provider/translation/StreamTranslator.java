@@ -1,6 +1,17 @@
 package com.epam.aidial.provider.translation;
 
-import com.epam.aidial.provider.json.Json;
+import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.ContentBlock;
+import com.anthropic.models.messages.MessageDeltaUsage;
+import com.anthropic.models.messages.RawContentBlockDeltaEvent;
+import com.anthropic.models.messages.RawContentBlockStartEvent;
+import com.anthropic.models.messages.RawContentBlockStopEvent;
+import com.anthropic.models.messages.RawMessageDeltaEvent;
+import com.anthropic.models.messages.RawMessageStartEvent;
+import com.anthropic.models.messages.RawMessageStopEvent;
+import com.anthropic.models.messages.RawMessageStreamEvent;
+import com.anthropic.models.messages.StopReason;
+import com.anthropic.models.messages.Usage;
 import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseOutputItem;
@@ -15,13 +26,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A stream of Responses API events as a stream of Messages API events: a state machine that is told each event and
- * answers with the SSE text to send. One content block is open at a time; opening one closes the one before. After the
+ * A stream of Responses API events as a stream of Messages API events (the Anthropic SDK's models, but for {@code
+ * ping} and {@code error}, which it has none for): a state machine that is told each event and answers with the SSE
+ * text to send. One content block is open at a time; opening one closes the one before. After the
  * message has ended, or has failed, nothing more is said. Pure: no I/O and no Vert.x.
  *
  * <p>A failure of the stream (an event that is not one, an error event, an end without the final event) is an {@code
@@ -53,7 +66,7 @@ final class StreamTranslator {
 
     /** The upstream is alive, and says it between two events. */
     List<String> onHeartbeat() {
-        return terminated ? List.of() : List.of(sse(Map.of("type", "ping")));
+        return terminated ? List.of() : List.of(sse("ping", Map.of("type", "ping")));
     }
 
     /** The data of one event of the upstream's stream. */
@@ -154,45 +167,43 @@ final class StreamTranslator {
             return;
         }
         started = true;
-        Map<String, Object> usage = new LinkedHashMap<>();
-        usage.put("input_tokens", 0);
-        usage.put("output_tokens", 0);
-        usage.put("cache_creation_input_tokens", 0);
-        usage.put("cache_read_input_tokens", 0);
-        Map<String, Object> message = new LinkedHashMap<>();
-        message.put("id", messageId);
-        message.put("type", "message");
-        message.put("role", "assistant");
-        message.put("model", model);
-        message.put("content", List.of());
-        message.put("stop_reason", null);
-        message.put("stop_sequence", null);
-        message.put("usage", usage);
-        out.add(sse(event("message_start", "message", message)));
+        Usage usage = ResponseTranslator.usageBuilder()
+                .inputTokens(0)
+                .outputTokens(0)
+                .cacheCreationInputTokens(0)
+                .cacheReadInputTokens(0)
+                .outputTokensDetails(Optional.empty())
+                .serverToolUse(Optional.empty())
+                .build();
+        out.add(sse(RawMessageStartEvent.of(ResponseTranslator.messageBuilder(messageId, model)
+                .content(List.of())
+                .stopReason(Optional.empty())
+                .usage(usage)
+                .build())));
     }
 
-    private void openBlock(String key, Map<String, Object> block, List<String> out) {
+    private void openBlock(String key, ContentBlock block, List<String> out) {
         start(out);
         closeBlock(out);
         openKey = key;
         openIndex = nextIndex++;
-        Map<String, Object> event = event("content_block_start", "index", openIndex);
-        event.put("content_block", block);
-        out.add(sse(event));
+        out.add(sse(RawContentBlockStartEvent.builder()
+                .index(openIndex)
+                .contentBlock(Blocks.opening(block))
+                .build()));
     }
 
     private boolean isOpen(String key) {
         return key.equals(openKey);
     }
 
-    private void delta(Map<String, Object> delta, List<String> out) {
+    private void delta(UnaryOperator<RawContentBlockDeltaEvent.Builder> delta, List<String> out) {
         if (openKey == null) {
             log.warn("Delta event has arrived before open event for a content block");
             return;
         }
-        Map<String, Object> event = event("content_block_delta", "index", openIndex);
-        event.put("delta", delta);
-        out.add(sse(event));
+        out.add(sse(delta.apply(RawContentBlockDeltaEvent.builder().index(openIndex))
+                .build()));
     }
 
     private void closeBlock(List<String> out) {
@@ -200,14 +211,14 @@ final class StreamTranslator {
             return;
         }
         openKey = null;
-        out.add(sse(event("content_block_stop", "index", openIndex)));
+        out.add(sse(RawContentBlockStopEvent.builder().index(openIndex).build()));
     }
 
     private void textDelta(String key, String text, List<String> out) {
         if (!isOpen(key)) {
-            openBlock(key, block("text", "text", ""), out);
+            openBlock(key, Blocks.text(""), out);
         }
-        delta(block("text_delta", "text", text), out);
+        delta(chunk -> chunk.textDelta(text), out);
     }
 
     private void thinkingDelta(long outputIndex, String part, String text, List<String> out) {
@@ -217,15 +228,14 @@ final class StreamTranslator {
         String key = "reasoning:" + outputIndex;
         String shown = text;
         if (!isOpen(key)) {
-            Map<String, Object> block = block("thinking", "thinking", "");
-            block.put("signature", "");
-            openBlock(key, block, out);
+            openBlock(key, Blocks.thinking("", ""), out);
         } else if (!part.equals(reasoningPart)) {
             // Separates the summary parts the way a block response joins them
             shown = "\n\n" + text;
         }
         reasoningPart = part;
-        delta(block("thinking_delta", "thinking", shown), out);
+        String thought = shown;
+        delta(chunk -> chunk.thinkingDelta(thought), out);
     }
 
     private void itemAdded(ResponseStreamEvent event, List<String> out) {
@@ -234,10 +244,10 @@ final class StreamTranslator {
         if ("function_call".equals(ResponsesJson.type(item._json()).orElse(""))) {
             hasToolCall = true;
             var call = item.functionCall().orElseThrow();
-            Map<String, Object> block = block("tool_use", "id", call.callId());
-            block.put("name", names.toClient(call.name()));
-            block.put("input", Map.of());
-            openBlock("function:" + added.outputIndex(), block, out);
+            openBlock(
+                    "function:" + added.outputIndex(),
+                    Blocks.toolUse(call.callId(), names.toClient(call.name()), JsonValue.from(Map.of())),
+                    out);
         }
     }
 
@@ -247,7 +257,7 @@ final class StreamTranslator {
             return;
         }
         streamedArguments.add(delta.outputIndex());
-        delta(block("input_json_delta", "partial_json", delta.delta()), out);
+        delta(chunk -> chunk.inputJsonDelta(delta.delta()), out);
     }
 
     private void itemDone(ResponseStreamEvent event, List<String> out) {
@@ -263,7 +273,7 @@ final class StreamTranslator {
                 String arguments = item.functionCall().orElseThrow().arguments();
                 if (!streamedArguments.contains(done.outputIndex()) && !arguments.isEmpty()) {
                     // The arguments an upstream sent without the deltas
-                    delta(block("input_json_delta", "partial_json", arguments), out);
+                    delta(chunk -> chunk.inputJsonDelta(arguments), out);
                 }
                 closeBlock(out);
             }
@@ -272,7 +282,7 @@ final class StreamTranslator {
                         "reasoning:" + done.outputIndex(), item.reasoning().orElseThrow(), out);
             case "message" -> {
                 ResponseOutputMessage message = item.message().orElseThrow();
-                for (Map<String, Object> citation : ResponseTranslator.citationBlocks(message, seenUrls)) {
+                for (ContentBlock citation : ResponseTranslator.citationBlocks(message, seenUrls)) {
                     openBlock("citation", citation, out);
                     closeBlock(out);
                 }
@@ -291,8 +301,7 @@ final class StreamTranslator {
             item.encryptedContent()
                     .filter(encrypted -> !encrypted.isEmpty())
                     .ifPresent(encrypted -> delta(
-                            block("signature_delta", "signature", new ReasoningWrapper(item.id(), encrypted).encode()),
-                            out));
+                            chunk -> chunk.signatureDelta(new ReasoningWrapper(item.id(), encrypted).encode()), out));
             closeBlock(out);
         } else {
             ResponseTranslator.thinkingBlock(item).ifPresent(block -> {
@@ -305,34 +314,34 @@ final class StreamTranslator {
     private void finish(Response response, List<String> out) {
         start(out);
         if (nextIndex == 0) {
-            openBlock("text", block("text", "text", ""), out);
+            openBlock("text", Blocks.text(""), out);
         }
         closeBlock(out);
         terminated = true;
-        String stopReason =
+        StopReason stopReason =
                 ResponseTranslator.stopReason(ResponseTranslator.incompleteReason(response), hasToolCall, isRefusal);
-        Map<String, Object> delta = new LinkedHashMap<>();
-        delta.put("stop_reason", stopReason);
-        delta.put("stop_sequence", null);
-        Map<String, Object> messageDelta = event("message_delta", "delta", delta);
-        messageDelta.put("usage", deltaUsage(ResponseTranslator.usage(response)));
-        out.add(sse(messageDelta));
-        out.add(sse(Map.of("type", "message_stop")));
+        out.add(sse(RawMessageDeltaEvent.builder()
+                .delta(RawMessageDeltaEvent.Delta.builder()
+                        .container(Optional.empty())
+                        .stopDetails(Optional.empty())
+                        .stopReason(stopReason)
+                        .stopSequence(Optional.empty())
+                        .build())
+                .usage(deltaUsage(ResponseTranslator.usage(response)))
+                .build()));
+        out.add(sse(RawMessageStopEvent.builder().build()));
     }
 
-    /** The counters of the final usage, in the order of Anthropic's {@code message_delta}. */
-    private static Map<String, Object> deltaUsage(Map<String, Object> usage) {
-        Map<String, Object> delta = new LinkedHashMap<>();
-        for (String name : List.of(
-                "input_tokens",
-                "output_tokens",
-                "cache_creation_input_tokens",
-                "cache_read_input_tokens",
-                "output_tokens_details",
-                "server_tool_use")) {
-            Optional.ofNullable(usage.get(name)).ifPresent(value -> delta.put(name, value));
-        }
-        return delta;
+    /** The counters of the final usage that {@code message_delta} carries. */
+    private static MessageDeltaUsage deltaUsage(Usage usage) {
+        return MessageDeltaUsage.builder()
+                .inputTokens(usage.inputTokens())
+                .outputTokens(usage.outputTokens())
+                .cacheCreationInputTokens(usage.cacheCreationInputTokens())
+                .cacheReadInputTokens(usage.cacheReadInputTokens())
+                .outputTokensDetails(usage.outputTokensDetails())
+                .serverToolUse(usage.serverToolUse())
+                .build();
     }
 
     private void error(int status, String message, List<String> out) {
@@ -343,22 +352,38 @@ final class StreamTranslator {
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("type", ErrorCodes.anthropicType(status));
         error.put("message", message);
-        out.add(sse(event("error", "error", error)));
-    }
-
-    private static Map<String, Object> event(String type, String key, Object value) {
         Map<String, Object> event = new LinkedHashMap<>();
-        event.put("type", type);
-        event.put(key, value);
-        return event;
+        event.put("type", "error");
+        event.put("error", error);
+        out.add(sse("error", event));
     }
 
-    private static Map<String, Object> block(String type, String key, Object value) {
-        return new LinkedHashMap<>(event(type, key, value));
+    private static String sse(RawMessageStartEvent event) {
+        return sse("message_start", RawMessageStreamEvent.ofMessageStart(event));
+    }
+
+    private static String sse(RawContentBlockStartEvent event) {
+        return sse("content_block_start", RawMessageStreamEvent.ofContentBlockStart(event));
+    }
+
+    private static String sse(RawContentBlockDeltaEvent event) {
+        return sse("content_block_delta", RawMessageStreamEvent.ofContentBlockDelta(event));
+    }
+
+    private static String sse(RawContentBlockStopEvent event) {
+        return sse("content_block_stop", RawMessageStreamEvent.ofContentBlockStop(event));
+    }
+
+    private static String sse(RawMessageDeltaEvent event) {
+        return sse("message_delta", RawMessageStreamEvent.ofMessageDelta(event));
+    }
+
+    private static String sse(RawMessageStopEvent event) {
+        return sse("message_stop", RawMessageStreamEvent.ofMessageStop(event));
     }
 
     /** {@code event: <type>} and the compact JSON as data, which is how the Anthropic API writes an event. */
-    private static String sse(Map<String, Object> event) {
-        return "event: " + event.get("type") + "\ndata: " + Json.encode(event) + "\n\n";
+    private static String sse(String type, Object event) {
+        return "event: " + type + "\ndata: " + AnthropicJson.write(event) + "\n\n";
     }
 }

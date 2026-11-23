@@ -11,7 +11,7 @@ expect:
   json:
     content: !replace
     - {type: thinking, thinking: Let me see, signature: !ref /_lib/translate.yaml:signature}
-    - {type: text, text: Hello}
+    - {type: text, text: Hello, citations: null}
 ---
 name: {{ (mode ~ ": " ~ "reasoning with only encrypted content is a redacted thinking block") | tojson }}
 mocks:
@@ -24,7 +24,7 @@ expect:
   json:
     content: !replace
     - {type: redacted_thinking, data: !ref /_lib/translate.yaml:signature}
-    - {type: text, text: Hello}
+    - {type: text, text: Hello, citations: null}
 ---
 name: {{ (mode ~ ": " ~ "reasoning with only text is an unsigned thinking block") | tojson }}
 mocks:
@@ -33,7 +33,7 @@ mocks:
       output: !replace
       - {type: reasoning, id: rs_1, summary: [{type: summary_text, text: Hm}]}
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: output_text, text: Hello, annotations: []}]}
-expect: {json: {content: !replace [{type: thinking, thinking: Hm, signature: ''}, {type: text, text: Hello}]}}
+expect: {json: {content: !replace [{type: thinking, thinking: Hm, signature: ''}, {type: text, text: Hello, citations: null}]}}
 ---
 name: {{ (mode ~ ": " ~ "reasoning with neither is nothing") | tojson }}
 mocks:

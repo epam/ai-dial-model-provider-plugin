@@ -214,7 +214,10 @@ field of the wrong type, an unknown role.
 
 ## The answer
 
-The message is sparse: `id`, `type`, `role`, `model`, `content`, `stop_reason`, `usage`.
+The message is the Anthropic SDK's `Message`, written as the SDK writes it, so it has every member the SDK requires, and
+the ones the Responses API has nothing for are `null`: `container`, `diagnostics`, `stop_details`, `stop_sequence`, and in
+`usage` `cache_creation`, `inference_geo`, `service_tier` and `speed`. A `text` block has `citations: null`; a `tool_use`
+and a `server_tool_use` block say `caller: {"type": "direct"}`, a `web_search_result` has `page_age: null`.
 
 - `model` is the deployment's name, `X-DIAL-DEPLOYMENT-ID`, whatever model the request names. DIAL Core always sends
   the header; without it the request is a `500`.
@@ -231,7 +234,7 @@ The message is sparse: `id`, `type`, `role`, `model`, `content`, `stop_reason`, 
   `cache_creation_input_tokens` is `cache_write_tokens` (at most what the reads left), `output_tokens_details.thinking_tokens`
   is `reasoning_tokens`, and `server_tool_use` counts the `web_search_call` items (`web_search_requests` a search,
   `web_fetch_requests` the opening of a page), when there are any. A missing counter is 0; with no `usage` at all the
-  message says `input_tokens` and `output_tokens` of 0 and nothing else.
+  message says `input_tokens` and `output_tokens` of 0 and every other counter `null`.
 - An output item or content part this page does not list is dropped, with a warning in the log; so is an unknown value
   of an enumeration. Only what the translator reads is checked: a field it never looks at may be of any type.
 

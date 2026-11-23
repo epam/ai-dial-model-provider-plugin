@@ -8,7 +8,7 @@ mocks:
       - {type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{"a":1}', status: completed}
 expect:
   json:
-    content: !replace [{type: tool_use, id: c1, name: f, input: {a: 1}}]
+    content: !replace [{type: tool_use, id: c1, name: f, input: {a: 1}, caller: {type: direct}}]
     stop_reason: tool_use
 ---
 name: {{ (mode ~ ": " ~ "text and function call keep their order") | tojson }}
@@ -18,19 +18,19 @@ mocks:
       output: !replace
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: output_text, text: Calling, annotations: []}]}
       - {type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{}', status: completed}
-expect: {json: {content: !replace [{type: text, text: Calling}, {type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
+expect: {json: {content: !replace [{type: text, text: Calling, citations: null}, {type: tool_use, id: c1, name: f, input: {}, caller: {type: direct}}], stop_reason: tool_use}}
 ---
 name: {{ (mode ~ ": " ~ "function call arguments that are no JSON are an empty input") | tojson }}
 mocks: [{response: {json: {output: !replace [{type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{"a":', status: completed}]}}}]
-expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
+expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}, caller: {type: direct}}], stop_reason: tool_use}}
 ---
 name: {{ (mode ~ ": " ~ "function call arguments that are no object are an empty input") | tojson }}
 mocks: [{response: {json: {output: !replace [{type: function_call, id: fc_1, call_id: c1, name: f, arguments: '[1]', status: completed}]}}}]
-expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
+expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}, caller: {type: direct}}], stop_reason: tool_use}}
 ---
 name: {{ (mode ~ ": " ~ "function call without arguments is an empty input") | tojson }}
 mocks: [{response: {json: {output: !replace [{type: function_call, id: fc_1, call_id: c1, name: f, arguments: '', status: completed}]}}}]
-expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
+expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}, caller: {type: direct}}], stop_reason: tool_use}}
 ---
 name: {{ (mode ~ ": " ~ "url citation is a web search pair after the citing text") | tojson }}
 mocks:
@@ -48,11 +48,12 @@ mocks:
 expect:
   json:
     content: !replace
-    - {type: text, text: See it}
-    - {type: server_tool_use, id: {$regex: '^srvtoolu_[0-9a-f]{32}$'}, name: web_search, input: {query: ''}}
+    - {type: text, text: See it, citations: null}
+    - {type: server_tool_use, id: {$regex: '^srvtoolu_[0-9a-f]{32}$'}, name: web_search, input: {query: ''}, caller: {type: direct}}
     - type: web_search_tool_result
       tool_use_id: {$regex: '^srvtoolu_[0-9a-f]{32}$'}
-      content: [{type: web_search_result, url: 'https://a.com', title: A, encrypted_content: ''}]
+      caller: {type: direct}
+      content: [{type: web_search_result, url: 'https://a.com', title: A, encrypted_content: '', page_age: null}]
 ---
 name: {{ (mode ~ ": " ~ "each cited URL is a result once, in the answer") | tojson }}
 mocks:
@@ -73,10 +74,10 @@ mocks:
 expect:
   json:
     content: !replace
-    - {type: text, text: One}
-    - {type: server_tool_use, id: {$type: string}, name: web_search, input: {query: ''}}
-    - {type: web_search_tool_result, tool_use_id: {$type: string}, content: [{type: web_search_result, url: 'https://a.com', title: A, encrypted_content: ''}]}
-    - {type: text, text: Two}
+    - {type: text, text: One, citations: null}
+    - {type: server_tool_use, id: {$type: string}, name: web_search, input: {query: ''}, caller: {type: direct}}
+    - {type: web_search_tool_result, tool_use_id: {$type: string}, caller: {type: direct}, content: [{type: web_search_result, url: 'https://a.com', title: A, encrypted_content: '', page_age: null}]}
+    - {type: text, text: Two, citations: null}
 ---
 name: {{ (mode ~ ": " ~ "a citation that is no URL citation is nothing") | tojson }}
 mocks:

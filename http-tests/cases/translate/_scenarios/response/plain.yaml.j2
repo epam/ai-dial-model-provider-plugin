@@ -15,11 +15,11 @@ mocks:
     json:
       output: !replace
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: output_text, text: One, annotations: []}, {type: output_text, text: Two, annotations: []}]}
-expect: {json: {content: [{type: text, text: One}, {type: text, text: Two}]}}
+expect: {json: {content: [{type: text, text: One, citations: null}, {type: text, text: Two, citations: null}]}}
 ---
 name: {{ (mode ~ ": " ~ "no output is one empty text block") | tojson }}
 mocks: [{response: {json: {output: !replace []}}}]
-expect: {json: {content: [{type: text, text: ''}]}}
+expect: {json: {content: [{type: text, text: '', citations: null}]}}
 ---
 name: {{ (mode ~ ": " ~ "an output item the translator does not know is dropped") | tojson }}
 mocks:
@@ -42,7 +42,7 @@ expect: {json: {usage: {input_tokens: 7, output_tokens: 3, cache_read_input_toke
 ---
 name: {{ (mode ~ ": " ~ "no usage is zero tokens") | tojson }}
 mocks: [{response: {json: {usage: !delete }}}]
-expect: {json: {usage: !replace {input_tokens: 0, output_tokens: 0}}}
+expect: {json: {usage: !replace {input_tokens: 0, output_tokens: 0, cache_read_input_tokens: null, cache_creation_input_tokens: null, output_tokens_details: null, cache_creation: null, inference_geo: null, server_tool_use: null, service_tier: null, speed: null}}}
 ---
 name: {{ (mode ~ ": " ~ "refusal is a text block") | tojson }}
 mocks:
@@ -50,4 +50,4 @@ mocks:
     json:
       output: !replace
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: refusal, refusal: I cannot}]}
-expect: {json: {content: [{type: text, text: I cannot}], stop_reason: refusal}}
+expect: {json: {content: [{type: text, text: I cannot, citations: null}], stop_reason: refusal}}

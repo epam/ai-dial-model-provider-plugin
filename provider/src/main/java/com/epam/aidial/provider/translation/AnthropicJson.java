@@ -6,7 +6,6 @@ import com.anthropic.core.ObjectMappers;
 import com.anthropic.models.beta.messages.BetaContentBlockParam;
 import com.anthropic.models.beta.messages.BetaToolUnion;
 import com.anthropic.models.beta.messages.MessageCreateParams;
-import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.Model;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -175,18 +174,6 @@ public final class AnthropicJson {
      */
     public static Optional<String> effort(MessageCreateParams.Body request) {
         return request.outputConfig().flatMap(c -> c.effort()).map(e -> e.asString());
-    }
-
-    /**
-     * A message from the JSON of its fields as given, sparse: the fields not given stay absent, as the SDK's builders,
-     * which insist on every field, cannot write them.
-     */
-    public static Message message(String json) {
-        try {
-            return MAPPER.readValue(json, Message.class);
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("not a message: " + e.getOriginalMessage(), e);
-        }
     }
 
     /** A message, a stream event or any other model as JSON, in the order and spelling the API uses. */

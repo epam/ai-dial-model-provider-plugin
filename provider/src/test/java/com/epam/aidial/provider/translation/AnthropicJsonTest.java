@@ -10,23 +10,12 @@ import com.anthropic.models.beta.messages.BetaContentBlockParam;
 import com.anthropic.models.beta.messages.BetaToolUnion;
 import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.epam.aidial.provider.api.InvalidRequestException;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** What the SDK's typed access does and does not give, as the translator relies on it (plan §2.8, research §B). */
 class AnthropicJsonTest {
-
-    private static JsonNode tree(String json) {
-        try {
-            return new ObjectMapper().readTree(json);
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException(e);
-        }
-    }
 
     private static MessageCreateParams.Body request(String json) {
         return AnthropicJson.parseRequest(json.getBytes(StandardCharsets.UTF_8));
@@ -136,14 +125,6 @@ class AnthropicJsonTest {
             InvalidRequestException e = assertThrows(InvalidRequestException.class, () -> request(json), json);
             assertTrue(e.getMessage().startsWith("The request body is not valid JSON: "), e.getMessage());
         }
-    }
-
-    @Test
-    void sparseMessageStaysSparse() {
-        String json =
-                """
-                {"id":"resp_1","type":"message","role":"assistant","model":"m","content":[{"type":"text","text":"Hello"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":2}}""";
-        assertEquals(tree(json), tree(AnthropicJson.write(AnthropicJson.message(json))), "no field added, none lost");
     }
 
     @Test

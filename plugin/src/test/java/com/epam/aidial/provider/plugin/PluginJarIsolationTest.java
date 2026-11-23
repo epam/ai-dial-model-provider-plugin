@@ -153,14 +153,11 @@ class PluginJarIsolationTest {
                 .invoke(null, "{\"model\":\"m\",\"max_tokens\":4,\"stream\":true,\"messages\":[]}".getBytes(UTF_8));
         Class<?> bodyType = isolated.loadClass("com.anthropic.models.beta.messages.MessageCreateParams$Body");
         assertEquals(true, anthropic.getMethod("stream", bodyType).invoke(null, body));
-        Object message = anthropic
-                .getMethod("message", String.class)
-                .invoke(
-                        null,
-                        "{\"id\":\"m1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\","
-                                + "\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}");
-        String written = (String) anthropic.getMethod("write", Object.class).invoke(null, message);
-        assertTrue(written.contains("\"text\":\"Hello\""), written);
+        Object stop = isolated.loadClass("com.anthropic.models.messages.RawContentBlockStopEvent")
+                .getMethod("of", long.class)
+                .invoke(null, 3L);
+        String written = (String) anthropic.getMethod("write", Object.class).invoke(null, stop);
+        assertTrue(written.contains("\"index\":3"), written);
 
         Class<?> responses = isolated.loadClass("com.epam.aidial.provider.translation.ResponsesJson");
         Object response = responses

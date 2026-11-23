@@ -12,6 +12,7 @@ import com.epam.aidial.provider.credentials.AzureTokens;
 import com.epam.aidial.provider.credentials.GoogleTokens;
 import com.epam.aidial.provider.credentials.SessionTags;
 import com.epam.aidial.provider.openai.ResponsesRoutes;
+import com.epam.aidial.provider.translation.ApiDispatch;
 import com.epam.aidial.provider.upstream.Proxies;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import io.vertx.core.Future;
@@ -44,7 +45,10 @@ public final class ModelProviders {
         UpstreamClient bedrockClient = new UpstreamClient(vertx, proxies, config.bedrock());
 
         Routes openai = Routes.of(
-                new AnthropicRoutes("/compat/openai", Targets.openai(), openaiClient, azure, google, now),
+                new ApiDispatch(
+                        AnthropicRoutes.PATHS,
+                        new AnthropicRoutes("/compat/openai", Targets.openai(), openaiClient, azure, google, now),
+                        null),
                 new ResponsesRoutes(
                         vertx,
                         config,
@@ -67,7 +71,10 @@ public final class ModelProviders {
 
         List<UpstreamClient> clients = List.of(openaiClient, vertexaiClient, bedrockClient);
         return new CompatRouter(
-                Map.of("openai", openai, "vertexai", vertexai, "bedrock", bedrock),
+                Map.of(
+                        "/compat/openai", openai,
+                        "/compat/vertexai", vertexai,
+                        "/compat/bedrock", bedrock),
                 () -> close(vertx, clients, dial, aws));
     }
 

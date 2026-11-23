@@ -68,3 +68,9 @@ tasks.register('pluginJar', com.github.jengelman.gradle.plugins.shadow.tasks.Sha
     archiveClassifier = ''
     destinationDirectory = layout.buildDirectory.dir('plugins')
 }
+
+// PluginJarIsolationTest loads the jar the way DIAL Core does, so the test needs the built jar.
+tasks.named('test') {
+    dependsOn tasks.named('pluginJar')
+    systemProperty 'plugin.jar', tasks.named('pluginJar').get().archiveFile.get().asFile.absolutePath
+}

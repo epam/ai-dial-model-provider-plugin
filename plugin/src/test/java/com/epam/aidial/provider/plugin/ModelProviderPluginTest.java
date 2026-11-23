@@ -127,6 +127,44 @@ class ModelProviderPluginTest {
     }
 
     @Test
+    void anAdapterThatIsNotTextIsNoAdapter() {
+        ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
+        ObjectNode object = settings();
+        object.putObject("adapter");
+        for (ObjectNode entry : List.of(
+                settings().putNull("adapter"),
+                settings().put("adapter", true),
+                settings().put("adapter", 1.5),
+                object)) {
+            assertEquals("adapter", single(provider.validate(entry)).path(), entry.toString());
+        }
+    }
+
+    @Test
+    void anEntrysValuesAreTheTextTheEnvironmentWouldHold() {
+        ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
+        ObjectNode object = settings("adapter", "bedrock");
+        object.putObject("AWS_SESSION_TAGS").put("team", "a");
+        assertEquals(List.of(), provider.validate(object), "an object is its JSON");
+
+        ObjectNode array = settings("adapter", "bedrock");
+        array.putArray("AWS_SESSION_TAGS").add("a");
+        PluginProvider.Problem notObject = single(provider.validate(array));
+        assertEquals("AWS_SESSION_TAGS", notObject.path(), "an array is its JSON, which is no object of strings");
+        assertTrue(notObject.message().contains("must be a JSON object of strings"), notObject.message());
+
+        assertEquals(
+                new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"),
+                single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", 1.5))),
+                "a number is its text");
+        assertEquals(
+                "HTTP_MAX_CONNECTIONS",
+                single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", true)))
+                        .path(),
+                "a boolean is its text");
+    }
+
+    @Test
     void settingsFromTheEntryThenTheEnvironment() throws Exception {
         MultiMap keyed = MultiMap.caseInsensitiveMultiMap().add("X-Upstream-Key", "k");
         Plugin fromEntry = plugin(
@@ -199,16 +237,17 @@ class ModelProviderPluginTest {
 
     @Test
     void bugIsTheStandaloneServersAnswer() throws Exception {
-        Plugin throwing = new ModelProviderPlugin(vertx, "/compat/openai", new CompatRouter(Map.of("openai", r -> {
-            throw new IllegalStateException("bug");
-        })));
+        Plugin throwing =
+                new ModelProviderPlugin(vertx, "/compat/openai", new CompatRouter(Map.of("/compat/openai", r -> {
+                    throw new IllegalStateException("bug");
+                })));
         Response thrown = answer(
                 throwing, request("/anthropic/v1/messages", MultiMap.caseInsensitiveMultiMap(), MESSAGES), new Host());
         assertEquals(500, thrown.statusCode());
         assertEquals("Internal Server Error", read(thrown));
 
         Plugin failing = new ModelProviderPlugin(
-                vertx, "/compat/openai", new CompatRouter(Map.of("openai", r -> Future.failedFuture("bug"))));
+                vertx, "/compat/openai", new CompatRouter(Map.of("/compat/openai", r -> Future.failedFuture("bug"))));
         Response failed = answer(
                 failing, request("/anthropic/v1/messages", MultiMap.caseInsensitiveMultiMap(), MESSAGES), new Host());
         assertEquals(500, failed.statusCode());

@@ -119,8 +119,8 @@ class PassthroughBench {
                 google,
                 Clock.systemUTC()));
         HttpServer server = await(vertx.createHttpServer(ModelProviderVerticle.serverOptions("127.0.0.1", 0))
-                .requestHandler(new HttpServerShim(
-                        new CompatRouter(Map.of("vertexai", vertexai, "bedrock", bedrock, "openai", openai))))
+                .requestHandler(new HttpServerShim(new CompatRouter(
+                        Map.of("/compat/vertexai", vertexai, "/compat/bedrock", bedrock, "/compat/openai", openai))))
                 .listen());
         port = server.actualPort();
         client = vertx.createHttpClient(new HttpClientOptions().setMaxPoolSize(CONCURRENCY));

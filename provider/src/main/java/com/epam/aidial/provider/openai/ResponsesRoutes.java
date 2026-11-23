@@ -76,6 +76,15 @@ public final class ResponsesRoutes implements Routes.Group {
         }
     }
 
+    /**
+     * Creates a response as {@code POST /openai/v1/responses} does, from a request that came by another path: the
+     * Responses call of a translator whose upstream is the one this mount's request names. The body is a Responses
+     * API's.
+     */
+    public Future<AdapterResponse> create(AdapterRequest request) {
+        return handle(request, Endpoint.CREATE, "");
+    }
+
     private enum Delivery {
         WHOLE,
         STREAM;

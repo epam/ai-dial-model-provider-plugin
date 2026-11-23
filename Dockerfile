@@ -9,7 +9,7 @@ RUN gradle --no-daemon :app:installDist
 # A JDK, not a JRE: a profiler records JFR with jcmd inside the container.
 FROM eclipse-temurin:25-jdk-alpine
 
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils gpgv gnutls libpng zlib brotli-libs musl musl-utils p11-kit p11-kit-trust
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils gpgv gnutls libpng zlib brotli-libs musl musl-utils p11-kit p11-kit-trust libfontenc
 
 WORKDIR /app
 RUN adduser -u 1001 --disabled-password --gecos "" appuser

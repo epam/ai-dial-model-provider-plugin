@@ -15,8 +15,9 @@ The same translation also runs as a service of DIAL Core, where the Responses ca
 The translation is a port of the Python translator of the DIAL SDK. Nothing is stored between requests, so the
 Responses request always has `store: false`.
 
-> This page grows with the translation. It describes what is translated *so far*; what is not listed here is not
-> translated yet.
+Contents: [As a service of DIAL Core](#as-a-service-of-dial-core), [The request](#the-request) (content blocks, turns,
+tools, thinking), [The answer](#the-answer), [Streaming](#streaming), [Cache affinity](#cache-affinity),
+[Failures](#failures), [Limitations](#limitations).
 
 ## As a service of DIAL Core
 
@@ -327,3 +328,20 @@ Everything the client sees is in the Anthropic API's error body, `{"type":"error
   `500` with the message "Internal server error"; the detail is logged, never sent. An item or content part with no
   `type` is such an answer.
 - `count_tokens` is not served for a Responses API upstream: `404`, "Endpoint not supported".
+
+## Limitations
+
+- `count_tokens` is not served for a Responses API upstream (`404`, "Endpoint not supported"): the Responses API has
+  nothing to count with.
+- `cache_control` is ignored, and no `prompt_cache_key` or `prompt_cache_retention` is sent: only the cache affinity
+  headers of DIAL Core are carried (see above).
+- `top_k`, `stop_sequences`, `compaction`, `mcp_servers`, `container`, `inference_geo` and `context_management` have no
+  Responses API equivalent and are dropped, with a warning in the log. So is the web search's `blocked_domains`: **the
+  search is not restricted** by it.
+- **`thinking` and `redacted_thinking` blocks that this translator did not sign are dropped with their text**
+  ([details and examples](#thinking-blocks-that-are-dropped)).
+- `thinking.budget_tokens` has no equivalent; an effort that the Responses API has no word for is a `400`.
+- A tool of a type the translator does not know is forwarded as sent, and the deployment decides.
+- Only creating a response is translated: the retrieval, deletion and cancellation of a Responses API response, and a
+  `background` response, are not reachable through the Messages API.
+- One way only: the Messages API over the Responses API. Not the Responses API over a Messages API upstream.

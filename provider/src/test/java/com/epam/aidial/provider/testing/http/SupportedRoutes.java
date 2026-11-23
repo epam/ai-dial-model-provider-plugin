@@ -22,8 +22,13 @@ public final class SupportedRoutes {
      * last accepts every case.
      */
     public enum Runner {
-        /** {@code MessagesToResponsesCasesTest}: the suite {@code translate}, whatever route it calls. */
-        TRANSLATE(c -> SupportedRoutes.suiteOf(c).filter("translate"::equals).isPresent()),
+        /**
+         * {@code PluginCasesTest} (the plugin module): the cases of the suite {@code translate} that are of the mode
+         * {@code plugin}, the translator served as a plugin of DIAL Core.
+         */
+        PLUGIN(c -> SupportedRoutes.isTranslate(c) && SupportedRoutes.isPluginMode(c)),
+        /** {@code MessagesToResponsesCasesTest}: the suite {@code translate}, but for its mode {@code plugin}. */
+        TRANSLATE(c -> SupportedRoutes.isTranslate(c) && !SupportedRoutes.isPluginMode(c)),
         /** {@code OpenAiResponsesCasesTest}: the cases to a Responses route. */
         RESPONSES(SupportedRoutes::isResponses),
         /**
@@ -71,6 +76,21 @@ public final class SupportedRoutes {
             suites.computeIfAbsent(suite(c), k -> new ArrayList<>()).add(c);
         }
         return suites;
+    }
+
+    private static boolean isTranslate(HttpTestCase c) {
+        return suiteOf(c).filter("translate"::equals).isPresent();
+    }
+
+    /** The cases of the suite {@code translate} sit in the directory of their mode. */
+    private static boolean isPluginMode(HttpTestCase c) {
+        Path file = c.file();
+        for (int i = file.getNameCount() - 3; i >= 0; i--) {
+            if (file.getName(i).toString().equals("translate")) {
+                return file.getName(i + 1).toString().equals("plugin");
+            }
+        }
+        return false;
     }
 
     static String suite(HttpTestCase c) {

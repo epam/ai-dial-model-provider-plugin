@@ -15,9 +15,22 @@ import org.jspecify.annotations.Nullable;
  * @param query   the raw query string, without {@code ?}; {@code null} when the request has none
  * @param aborted completes when the caller goes away before the response has ended; a provider cancels the
  *                upstream call it made for the request
+ * @param core    how to call DIAL Core while serving the request, when the request came in the process of DIAL Core
+ *                (a plugin); null for a request that came over HTTP
  */
 public record AdapterRequest(
-        HttpMethod method, String path, String query, MultiMap headers, Buffer body, Future<Void> aborted) {
+        HttpMethod method,
+        String path,
+        String query,
+        MultiMap headers,
+        Buffer body,
+        Future<Void> aborted,
+        @Nullable CoreCall core) {
+
+    public AdapterRequest(
+            HttpMethod method, String path, String query, MultiMap headers, Buffer body, Future<Void> aborted) {
+        this(method, path, query, headers, body, aborted, null);
+    }
 
     public static final String ENDPOINT_HEADER = "X-Upstream-Endpoint";
 
@@ -84,11 +97,11 @@ public record AdapterRequest(
     }
 
     public AdapterRequest withPath(String newPath) {
-        return new AdapterRequest(method, newPath, query, headers, body, aborted);
+        return new AdapterRequest(method, newPath, query, headers, body, aborted, core);
     }
 
     /** For the functions that outlive the upstream send (see {@code Unsent}): a captured request keeps its body. */
     public AdapterRequest withoutBody() {
-        return new AdapterRequest(method, path, query, headers, Buffer.buffer(), aborted);
+        return new AdapterRequest(method, path, query, headers, Buffer.buffer(), aborted, core);
     }
 }

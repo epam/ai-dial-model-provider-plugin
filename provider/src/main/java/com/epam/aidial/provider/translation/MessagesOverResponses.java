@@ -49,7 +49,11 @@ public final class MessagesOverResponses implements ModelProvider {
 
     /** Served through its own client, which is {@code ModelProviders}' to close. */
     public static MessagesOverResponses overDialCore(UpstreamClient client, @Nullable String dialUrl) {
-        return new MessagesOverResponses(new DialCoreUpstream(client, dialUrl));
+        ResponsesUpstream http = new DialCoreUpstream(client, dialUrl);
+        ResponsesUpstream host = new HostUpstream();
+        // A request that came through the host of a plugin calls DIAL Core through it: in process, with its credentials
+        return new MessagesOverResponses(
+                request -> request.core() != null ? host.create(request) : http.create(request));
     }
 
     public MessagesOverResponses(ResponsesUpstream upstream) {
@@ -211,7 +215,7 @@ public final class MessagesOverResponses implements ModelProvider {
             }
         }
         return new AdapterRequest(
-                HttpMethod.POST, RESPONSES_PATH, null, headers, Buffer.buffer(json), request.aborted());
+                HttpMethod.POST, RESPONSES_PATH, null, headers, Buffer.buffer(json), request.aborted(), request.core());
     }
 
     /** Those of the upstream that describe its body, or the cache of its coordinates, are not the client's. */

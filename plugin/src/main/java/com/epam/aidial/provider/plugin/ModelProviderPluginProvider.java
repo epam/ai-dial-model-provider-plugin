@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 
 /**
@@ -18,6 +20,7 @@ import java.util.TreeSet;
 public final class ModelProviderPluginProvider implements PluginProvider {
 
     private static final String ADAPTER = "adapter";
+    private static final String TRANSLATOR = "translator";
 
     private final Map<String, String> environment;
 
@@ -37,9 +40,9 @@ public final class ModelProviderPluginProvider implements PluginProvider {
     @Override
     public List<Problem> validate(ObjectNode node) {
         PluginSettings settings = PluginSettings.of(node);
-        if (!ModelProviders.ADAPTERS.contains(settings.adapter())) {
-            return List.of(new Problem(
-                    ADAPTER, "must be one of " + String.join(", ", new TreeSet<>(ModelProviders.ADAPTERS))));
+        Optional<Problem> invalid = entry(settings);
+        if (invalid.isPresent()) {
+            return List.of(invalid.get());
         }
         try {
             Config.from(settings.variables(environment));
@@ -49,12 +52,39 @@ public final class ModelProviderPluginProvider implements PluginProvider {
         }
     }
 
+    /** An entry is an adapter or a translator, and one of the names this plugin has. */
+    private static Optional<Problem> entry(PluginSettings settings) {
+        if (settings.hasAdapter() && settings.hasTranslator()) {
+            return Optional.of(new Problem(TRANSLATOR, "an entry has an adapter or a translator, not both"));
+        }
+        if (settings.hasTranslator()) {
+            return ModelProviders.TRANSLATORS.contains(settings.translator())
+                    ? Optional.empty()
+                    : Optional.of(new Problem(TRANSLATOR, "must be one of " + names(ModelProviders.TRANSLATORS)));
+        }
+        if (settings.hasAdapter()) {
+            return ModelProviders.ADAPTERS.contains(settings.adapter())
+                    ? Optional.empty()
+                    : Optional.of(new Problem(ADAPTER, "must be one of " + names(ModelProviders.ADAPTERS)));
+        }
+        return Optional.of(new Problem(
+                ADAPTER,
+                "an entry needs an adapter (one of " + names(ModelProviders.ADAPTERS) + ") or a translator (one of "
+                        + names(ModelProviders.TRANSLATORS) + ")"));
+    }
+
+    private static String names(Set<String> names) {
+        return String.join(", ", new TreeSet<>(names));
+    }
+
     @Override
     public Plugin create(ObjectNode node, Vertx vertx) {
         PluginSettings settings = PluginSettings.of(node);
-        return new ModelProviderPlugin(
-                vertx,
-                "/compat/" + settings.adapter(),
-                ModelProviders.create(vertx, Config.from(settings.variables(environment))));
+        Config config = Config.from(settings.variables(environment));
+        if (settings.hasTranslator()) {
+            return new ModelProviderPlugin(
+                    vertx, "/" + settings.translator(), ModelProviders.createTranslator(vertx, config));
+        }
+        return new ModelProviderPlugin(vertx, "/compat/" + settings.adapter(), ModelProviders.create(vertx, config));
     }
 }

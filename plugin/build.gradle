@@ -34,6 +34,8 @@ dependencies {
     testImplementation pluginApi
     testImplementation "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
     testImplementation rootProject.project(':provider').sourceSets.test.output
+    // The HTTP cases' runner (provider's test output) reads them
+    testImplementation "org.yaml:snakeyaml:${snakeyaml_version}"
 }
 
 // What crosses the plugin API, the logging API and the telemetry API: DIAL Core's own copies must be the ones loaded.

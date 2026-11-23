@@ -33,6 +33,9 @@ public final class ModelProviders {
 
     public static final Set<String> ADAPTERS = Set.of("openai", "vertexai", "bedrock");
 
+    /** The translators a plugin entry can be, each served below {@code /<name>}. */
+    public static final Set<String> TRANSLATORS = Set.of("openaiResponses");
+
     private ModelProviders() {}
 
     public static CompatRouter create(Vertx vertx, Config config) {
@@ -74,6 +77,18 @@ public final class ModelProviders {
                         TRANSLATOR_PREFIX,
                         translatorMount(dialCoreClient, config)),
                 () -> close(vertx, clients, dial, aws));
+    }
+
+    /** The translator and nothing else: for a plugin entry that is a translator (see {@link #TRANSLATOR_PREFIX}). */
+    public static CompatRouter createTranslator(Vertx vertx, Config config) {
+        UpstreamClient dialCoreClient = dialCoreClient(vertx, config);
+        return new CompatRouter(
+                Map.of(TRANSLATOR_PREFIX, translatorMount(dialCoreClient, config)), dialCoreClient::close);
+    }
+
+    /** What the translator calls DIAL Core back with: outside the mounts' caps, as {@link DialApi}'s calls are. */
+    private static UpstreamClient dialCoreClient(Vertx vertx, Config config) {
+        return new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofMinutes(10)));
     }
 
     /** DIAL Core's translator contract: Core calls {@code <base URL>/anthropic/v1/messages}, and is called back. */

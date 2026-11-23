@@ -21,6 +21,7 @@ import io.vertx.core.http.HttpMethod;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +56,7 @@ public final class MessagesOverResponses implements ModelProvider {
             return Future.succeededFuture(AnthropicErrors.error(404, "not_found_error", "Endpoint not supported"));
         }
         ToolNames names = new ToolNames();
-        Map<String, Object> translated;
+        RequestTranslator.Translation translated;
         boolean streaming;
         try {
             MessageCreateParams.Body body = AnthropicJson.parseRequest(Buffers.array(request.body()));
@@ -73,11 +74,11 @@ public final class MessagesOverResponses implements ModelProvider {
             log.error("The request has no {} header", DEPLOYMENT_HEADER);
             return Future.succeededFuture(internalError());
         }
-        AdapterRequest call = upstreamRequest(request, Json.encode(translated));
+        AdapterRequest call = upstreamRequest(request, Json.encode(translated.body()), translated.cachePaths());
         return Answers.call(upstream::create, call)
                 .map(answer -> streaming
-                        ? stream(answer, deployment, names, request.aborted())
-                        : answer(answer, deployment, names))
+                        ? stream(answer, deployment, names, translated.cachePaths())
+                        : answer(answer, deployment, names, translated.cachePaths()))
                 .recover(e -> request.aborted().isComplete() ? Future.failedFuture(e) : failed(e));
     }
 
@@ -86,7 +87,7 @@ public final class MessagesOverResponses implements ModelProvider {
         return Future.succeededFuture(internalError());
     }
 
-    private AdapterResponse answer(AdapterResponse answer, String deployment, ToolNames names) {
+    private AdapterResponse answer(AdapterResponse answer, String deployment, ToolNames names, CachePaths cachePaths) {
         try {
             byte[] body = bytes(answer);
             if (answer.status() >= 400) {
@@ -96,6 +97,7 @@ public final class MessagesOverResponses implements ModelProvider {
             AdapterResponse message =
                     AdapterResponse.json(200, Json.encode(ResponseTranslator.message(response, deployment, names)));
             copyHeaders(answer.headers(), message.headers());
+            cacheHeaders(answer.headers(), message.headers(), cachePaths);
             return message;
         } catch (ResponseTranslator.ResponseFailedException e) {
             return AnthropicErrors.error(e.status(), ErrorCodes.anthropicType(e.status()), e.getMessage());
@@ -109,7 +111,7 @@ public final class MessagesOverResponses implements ModelProvider {
     }
 
     /** The upstream's stream, translated; its failure, as for an answer that is whole. */
-    private AdapterResponse stream(AdapterResponse answer, String deployment, ToolNames names, Future<Void> aborted) {
+    private AdapterResponse stream(AdapterResponse answer, String deployment, ToolNames names, CachePaths cachePaths) {
         if (answer.status() >= 400) {
             return relayedError(answer, bytes(answer));
         }
@@ -127,6 +129,7 @@ public final class MessagesOverResponses implements ModelProvider {
                 MultiMap.caseInsensitiveMultiMap().set("Content-Type", "text/event-stream; charset=utf-8"),
                 new Body.Stream(translated.output().pipe()));
         copyHeaders(answer.headers(), message.headers());
+        cacheHeaders(answer.headers(), message.headers(), cachePaths);
         return message;
     }
 
@@ -161,14 +164,45 @@ public final class MessagesOverResponses implements ModelProvider {
         throw new IllegalStateException("The Responses API answered a stream for a request that is not streamed");
     }
 
+    /**
+     * The cache affinity of the answer, in the Messages body's coordinates: the upstream's path translated, and its
+     * expiry with it. Nothing in, nothing out, and no expiry for a path that names nothing.
+     */
+    private static void cacheHeaders(MultiMap from, MultiMap to, CachePaths cachePaths) {
+        String path = from.get(AdapterResponse.CACHE_BREAKPOINT_HEADER);
+        if (path == null) {
+            return;
+        }
+        Optional<String> translated = cachePaths.toMessages(path);
+        if (translated.isEmpty()) {
+            log.warn("Dropping the cache breakpoint: no block of the Messages request it is translated into: {}", path);
+            return;
+        }
+        to.set(AdapterResponse.CACHE_BREAKPOINT_HEADER, translated.get());
+        String expireAt = from.get(AdapterResponse.CACHE_EXPIRE_AT_HEADER);
+        if (expireAt != null) {
+            to.set(AdapterResponse.CACHE_EXPIRE_AT_HEADER, expireAt);
+        }
+    }
+
     /** The Messages request's headers go on: the {@code X-Upstream-*} ones select the upstream. */
-    private static AdapterRequest upstreamRequest(AdapterRequest request, String json) {
+    private static AdapterRequest upstreamRequest(AdapterRequest request, String json, CachePaths cachePaths) {
         MultiMap headers = MultiMap.caseInsensitiveMultiMap().addAll(request.headers());
         // describe the body of the Messages request, not the translated one; the body is read whole, so plain bytes
         headers.remove("Content-Length").remove("Accept-Encoding").set("Content-Type", "application/json");
-        // The path is in the Messages body's coordinates, which the Responses route cannot stamp (see the cache
-        // headers)
+        // The path is in the Messages body's coordinates: in the Responses body's it is another one, or none
+        String path = request.headers().get(AdapterResponse.CACHE_BREAKPOINT_HEADER);
         headers.remove(AdapterResponse.CACHE_BREAKPOINT_HEADER);
+        if (path != null) {
+            Optional<String> translated = cachePaths.toResponses(path);
+            if (translated.isPresent()) {
+                headers.set(AdapterResponse.CACHE_BREAKPOINT_HEADER, translated.get());
+            } else {
+                log.warn(
+                        "Dropping the cache breakpoint: no element of the Responses request it is translated into: {}",
+                        path);
+            }
+        }
         return new AdapterRequest(
                 HttpMethod.POST, RESPONSES_PATH, null, headers, Buffer.buffer(json), request.aborted());
     }

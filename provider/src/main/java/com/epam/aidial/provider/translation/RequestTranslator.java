@@ -32,11 +32,12 @@ final class RequestTranslator {
      * @throws InvalidRequestException when the request cannot be translated
      * @throws com.anthropic.errors.AnthropicInvalidDataException when a field it reads is missing or mistyped
      */
-    static Map<String, Object> translate(MessageCreateParams.Body request, boolean stream, ToolNames names) {
+    static Translation translate(MessageCreateParams.Body request, boolean stream, ToolNames names) {
         Map<String, Object> body = new LinkedHashMap<>();
         AnthropicJson.model(request).ifPresent(model -> body.put("model", model));
         Dropped dropped = new Dropped();
-        body.put("input", new InputItems(new ContentParts(dropped), names, dropped).of(request.messages()));
+        InputItems.Result input = new InputItems(new ContentParts(dropped), names, dropped).of(request.messages());
+        body.put("input", input.items());
         String instructions = instructions(request);
         if (!instructions.isEmpty()) {
             body.put("instructions", instructions);
@@ -67,7 +68,13 @@ final class RequestTranslator {
         user(request).ifPresent(user -> body.put("user", user));
         droppedParameters(request, dropped);
         dropped.warn(log);
-        return body;
+        return new Translation(
+                body,
+                new CachePaths(
+                        sentTools.size(),
+                        systemBlocks(request),
+                        body.containsKey("instructions"),
+                        input.itemOfBlock()));
     }
 
     /** The structured output: a JSON schema, which is all the Responses API takes of {@code output_config.format}. */
@@ -94,6 +101,18 @@ final class RequestTranslator {
         json.put("schema", schema);
         json.put("strict", true);
         return Optional.of(Map.of("format", json));
+    }
+
+    /** The Responses request, and the paths of the cache between it and the Messages request it comes from. */
+    record Translation(Map<String, Object> body, CachePaths cachePaths) {}
+
+    /** The blocks of {@code system} as Core counts them: a string is one. */
+    private static int systemBlocks(MessageCreateParams.Body request) {
+        return request.system()
+                .map(system -> system.string().isPresent()
+                        ? 1
+                        : system.betaTextBlockParams().map(List::size).orElse(0))
+                .orElse(0);
     }
 
     private static long outputTokens(long maxTokens) {

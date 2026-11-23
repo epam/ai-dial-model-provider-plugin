@@ -238,6 +238,41 @@ With `stream: true` the answer is a Messages API event stream (`Content-Type: te
 An upstream that answers a stream request with an error status gets the same error answer as for a request that is not
 streamed (a JSON body, not a stream). A client that goes away ends the upstream call.
 
+## Cache affinity
+
+DIAL Core can ask a model for cache affinity: it sends `X-Dial-Cache-Breakpoint-Path`, the position of the end of the
+prefix of the body that it cached, and the model answers with `X-Dial-Cache-Breakpoint-Path` and `X-Dial-Cache-Expire-At`.
+The positions are those of the body Core sent, so the two APIs' bodies need translating: **a path is carried over to
+the other body in both directions, and the expiry is passed through**. Each part is optional, and nothing in is nothing
+out.
+
+| | Messages body | Responses body |
+| --- | --- | --- |
+| tools | `tools[k]` | `tools[k]` |
+| the system text | `system[k]` (a string is `system[0]`) | `instructions[0]`: all the system text is one string |
+| a message's block | `messages[j].content[k]` (a string content is `content[0]`) | `input[i]`, the item the block went into |
+
+Several blocks can make one item (adjacent texts, a whole user message), and blocks that are dropped make none, so:
+
+- **Messages to Responses** (the header of the call to the upstream): a block is the item it went into. A block that
+  was dropped (an empty text, a thinking block of another model, a block of a type that is not translated, a system
+  turn that cleared itself) is what the nearest block before it is; before the first one, the instructions, else the last
+  tool, else nothing: a prefix is still a prefix.
+- **Responses to Messages** (the header of the answer): an item is the **last** block that went into it, the
+  instructions are the last system block. A cache point in the middle of a merged item cannot be said.
+- A path that names nothing (a position the request has not, a path of no body) is left out, with a warning; so is the
+  expiry with it. The answer of a failed call carries none.
+
+Example. `system: [A, B]`; `messages[0]`: "hi"; `messages[1]`: [thinking (of another model, dropped), text "ok",
+tool_use]; `messages[2]`: [tool_result, text "go"] become `instructions: "A\n\nB"` and `input` [0] user "hi", [1]
+assistant "ok", [2] function_call, [3] function_call_output, [4] user "go". Then `system[1]` is `instructions[0]`,
+`messages[1].content[1]` is `input[1]`, `messages[1].content[0]` (dropped) is `input[0]`, `messages[2].content[0]` is
+`input[3]`; and coming back `input[1]` is `messages[1].content[1]`, `input[4]` is `messages[2].content[1]`,
+`instructions[0]` is `system[1]`.
+
+`cache_control` is not translated: it is ignored, and no `prompt_cache_key` or `prompt_cache_retention` is sent. Only
+what DIAL Core asks for by the header is carried.
+
 ## Failures
 
 Everything the client sees is in the Anthropic API's error body, `{"type":"error","error":{"type","message"}}`.

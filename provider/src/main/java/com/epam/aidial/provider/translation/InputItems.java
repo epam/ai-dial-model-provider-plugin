@@ -38,18 +38,97 @@ final class InputItems {
         this.dropped = dropped;
     }
 
-    List<Map<String, Object>> of(List<BetaMessageParam> messages) {
+    /**
+     * The input items of the messages, and where each block of the messages went (see {@link CachePaths}). A message
+     * that is not visible (see {@link #visible}) has its blocks, and none of them went anywhere.
+     */
+    Result of(List<BetaMessageParam> messages) {
+        List<BetaMessageParam> visible = visible(messages);
         List<Map<String, Object>> items = new ArrayList<>();
-        for (BetaMessageParam message : visible(messages)) {
-            String role = message.role().asString();
-            switch (role) {
-                case "user" -> items.addAll(userTurn(message.content().orElse(null)));
-                case "assistant" -> items.addAll(assistantTurn(message.content().orElse(null)));
-                case "system" -> items.addAll(systemTurn(message.system()));
-                default -> throw new InvalidRequestException("Unsupported message role: " + role);
+        List<int[]> itemOfBlock = new ArrayList<>();
+        for (BetaMessageParam message : messages) {
+            Turn turn = isVisible(visible, message) ? turn(message) : Turn.hidden(blockCount(message));
+            int base = items.size();
+            items.addAll(turn.items);
+            int[] blocks = new int[turn.itemOfBlock.size()];
+            for (int k = 0; k < blocks.length; k++) {
+                Map<String, Object> item = turn.itemOfBlock.get(k);
+                blocks[k] = item == null ? -1 : base + indexOfIdentity(turn.items, item);
+            }
+            itemOfBlock.add(blocks);
+        }
+        return new Result(items, itemOfBlock);
+    }
+
+    /** The items, and for each message the item each of its blocks went into ({@code -1}: none). */
+    record Result(List<Map<String, Object>> items, List<int[]> itemOfBlock) {}
+
+    private Turn turn(BetaMessageParam message) {
+        String role = message.role().asString();
+        return switch (role) {
+            case "user" -> userTurn(message.content().orElse(null));
+            case "assistant" -> assistantTurn(message.content().orElse(null));
+            case "system" -> systemTurn(message.system());
+            default -> throw new InvalidRequestException("Unsupported message role: " + role);
+        };
+    }
+
+    /** What the Messages body holds of a message to Core, which counts a string as the one block of an array. */
+    private static int blockCount(BetaMessageParam message) {
+        if (message.role().asString().equals("system")) {
+            JsonValue content = message.system()
+                    .flatMap(s -> s.content())
+                    .flatMap(c -> c._json())
+                    .orElse(null);
+            return content == null
+                    ? 0
+                    : AnthropicJson.array(content).map(List::size).orElse(1);
+        }
+        return message.content()
+                .map(content -> content.string().isPresent()
+                        ? 1
+                        : content.contentBlockParams().map(List::size).orElse(0))
+                .orElse(0);
+    }
+
+    private static boolean isVisible(List<BetaMessageParam> visible, BetaMessageParam message) {
+        return visible.stream().anyMatch(candidate -> candidate == message);
+    }
+
+    private static int indexOfIdentity(List<Map<String, Object>> items, Map<String, Object> item) {
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i) == item) {
+                return i;
             }
         }
-        return items;
+        throw new IllegalStateException("an item of a block is not an item of its turn");
+    }
+
+    /** The items of one turn, in the order they are sent, and the item each of its blocks went into (null: none). */
+    private static final class Turn {
+
+        final List<Map<String, Object>> items = new ArrayList<>();
+        final List<Map<String, Object>> itemOfBlock = new ArrayList<>();
+
+        static Turn hidden(int blocks) {
+            Turn turn = new Turn();
+            for (int k = 0; k < blocks; k++) {
+                turn.itemOfBlock.add(null);
+            }
+            return turn;
+        }
+
+        /** Blocks that went nowhere (an empty turn's, a string's) or all into one item. */
+        static Turn of(int blocks, Map<String, Object> item) {
+            Turn turn = hidden(blocks);
+            if (item != null) {
+                turn.items.add(item);
+                for (int k = 0; k < blocks; k++) {
+                    turn.itemOfBlock.set(k, item);
+                }
+            }
+            return turn;
+        }
     }
 
     /**
@@ -79,59 +158,81 @@ final class InputItems {
                 .orElse(false);
     }
 
-    private List<Map<String, Object>> userTurn(BetaMessageContentParam content) {
+    private Turn userTurn(BetaMessageContentParam content) {
         if (content == null) {
-            return List.of();
+            return Turn.hidden(0);
         }
         Optional<String> string = content.string();
         if (string.isPresent()) {
-            return string.get().isEmpty()
-                    ? List.of()
-                    : List.of(message("user", List.of(ContentParts.text(string.get()))));
+            return Turn.of(
+                    1, string.get().isEmpty() ? null : message("user", List.of(ContentParts.text(string.get()))));
         }
         // The outputs answer the calls of the previous turn, so they come first, and the system text prefaces the
         // user text that follows it
+        List<BetaContentBlockParam> blocks = content.contentBlockParams().orElse(List.of());
+        Turn turn = Turn.hidden(blocks.size());
         List<Map<String, Object>> outputs = new ArrayList<>();
         List<Map<String, Object>> system = new ArrayList<>();
         List<Map<String, Object>> userParts = new ArrayList<>();
-        for (BetaContentBlockParam block : content.contentBlockParams().orElse(List.of())) {
+        List<Integer> userBlocks = new ArrayList<>();
+        for (int k = 0; k < blocks.size(); k++) {
+            BetaContentBlockParam block = blocks.get(k);
             if (block.isToolResult()) {
-                outputs.add(functionCallOutput(block.asToolResult()));
+                Map<String, Object> output = functionCallOutput(block.asToolResult());
+                outputs.add(output);
+                turn.itemOfBlock.set(k, output);
             } else if (isMidConvSystem(block)) {
-                system.addAll(midConvSystem(block));
+                List<Map<String, Object>> message = midConvSystem(block);
+                system.addAll(message);
+                turn.itemOfBlock.set(k, message.isEmpty() ? null : message.getFirst());
             } else {
-                userParts.addAll(parts.of(block));
+                List<Map<String, Object>> blockParts = parts.of(block);
+                userParts.addAll(blockParts);
+                if (!blockParts.isEmpty()) {
+                    userBlocks.add(k);
+                }
             }
         }
-        List<Map<String, Object>> items = new ArrayList<>(outputs);
-        items.addAll(system);
+        turn.items.addAll(outputs);
+        turn.items.addAll(system);
         if (!userParts.isEmpty()) {
-            items.add(message("user", userParts));
+            Map<String, Object> user = message("user", userParts);
+            turn.items.add(user);
+            userBlocks.forEach(k -> turn.itemOfBlock.set(k, user));
         }
-        return items;
+        return turn;
     }
 
-    private List<Map<String, Object>> assistantTurn(BetaMessageContentParam content) {
+    private Turn assistantTurn(BetaMessageContentParam content) {
         if (content == null) {
-            return List.of();
+            return Turn.hidden(0);
         }
         Optional<String> string = content.string();
         if (string.isPresent()) {
-            return string.get().isEmpty() ? List.of() : List.of(message("assistant", string.get()));
+            return Turn.of(1, string.get().isEmpty() ? null : message("assistant", string.get()));
         }
         // A function call must follow the reasoning that made it, so the blocks keep their order, the adjacent texts
         // joined into one message
+        List<BetaContentBlockParam> blocks = content.contentBlockParams().orElse(List.of());
+        Turn turn = Turn.hidden(blocks.size());
         List<Map<String, Object>> system = new ArrayList<>();
         List<Map<String, Object>> items = new ArrayList<>();
         List<String> texts = new ArrayList<>();
-        for (BetaContentBlockParam block : content.contentBlockParams().orElse(List.of())) {
+        List<Integer> textBlocks = new ArrayList<>();
+        for (int k = 0; k < blocks.size(); k++) {
+            BetaContentBlockParam block = blocks.get(k);
             Map<String, Object> item = null;
             if (block.isText()) {
                 if (!block.asText().text().isEmpty()) {
                     texts.add(block.asText().text());
+                    textBlocks.add(k);
                 }
             } else if (block.isCompaction()) {
-                block.asCompaction().content().filter(text -> !text.isEmpty()).ifPresent(texts::add);
+                Optional<String> text = block.asCompaction().content().filter(t -> !t.isEmpty());
+                text.ifPresent(texts::add);
+                if (text.isPresent()) {
+                    textBlocks.add(k);
+                }
             } else if (block.isToolUse()) {
                 item = functionCall(block.asToolUse());
             } else if (block.isThinking()) {
@@ -140,19 +241,22 @@ final class InputItems {
             } else if (block.isRedactedThinking()) {
                 item = reasoning(block.asRedactedThinking().data(), "");
             } else if (isMidConvSystem(block)) {
-                system.addAll(midConvSystem(block));
+                List<Map<String, Object>> message = midConvSystem(block);
+                system.addAll(message);
+                turn.itemOfBlock.set(k, message.isEmpty() ? null : message.getFirst());
             } else {
                 dropped.add("assistant content block " + AnthropicJson.blockType(block));
             }
             if (item != null) {
-                flush(texts, items);
+                flush(texts, textBlocks, items, turn);
                 items.add(item);
+                turn.itemOfBlock.set(k, item);
             }
         }
-        flush(texts, items);
+        flush(texts, textBlocks, items, turn);
         // After the turn, the system text could separate a call from its output
-        List<Map<String, Object>> turn = new ArrayList<>(system);
-        turn.addAll(items);
+        turn.items.addAll(system);
+        turn.items.addAll(items);
         return turn;
     }
 
@@ -181,10 +285,14 @@ final class InputItems {
         return part;
     }
 
-    private static void flush(List<String> texts, List<Map<String, Object>> items) {
+    private static void flush(
+            List<String> texts, List<Integer> textBlocks, List<Map<String, Object>> items, Turn turn) {
         if (!texts.isEmpty()) {
-            items.add(message("assistant", String.join("\n", texts)));
+            Map<String, Object> message = message("assistant", String.join("\n", texts));
+            items.add(message);
+            textBlocks.forEach(k -> turn.itemOfBlock.set(k, message));
             texts.clear();
+            textBlocks.clear();
         }
     }
 
@@ -223,10 +331,15 @@ final class InputItems {
         return item;
     }
 
-    private List<Map<String, Object>> systemTurn(Optional<BetaSystemMessageParam> system) {
+    private Turn systemTurn(Optional<BetaSystemMessageParam> system) {
         JsonValue content =
                 system.flatMap(s -> s.content()).flatMap(c -> c._json()).orElse(null);
-        return content == null ? List.of() : systemMessage(content);
+        if (content == null) {
+            return Turn.hidden(0);
+        }
+        List<Map<String, Object>> message = systemMessage(content);
+        return Turn.of(
+                AnthropicJson.array(content).map(List::size).orElse(1), message.isEmpty() ? null : message.getFirst());
     }
 
     private static boolean isMidConvSystem(BetaContentBlockParam block) {

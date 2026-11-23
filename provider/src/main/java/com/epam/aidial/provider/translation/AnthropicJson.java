@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -114,6 +116,24 @@ public final class AnthropicJson {
     /** The content block as it was sent: the only access to a block of a type the model has no variant for. */
     public static JsonValue raw(BetaContentBlockParam block) {
         return block._json().orElseThrow(() -> new InvalidRequestException("content: block is not an object"));
+    }
+
+    /** The type of a content block as sent: of a block of a type the model has no variant for too. */
+    public static String blockType(BetaContentBlockParam block) {
+        return type(raw(block)).orElse("(none)");
+    }
+
+    /** What a JSON value is, as the SDK reads it: the helpers keep the types its raw accessors lose. */
+    public static Optional<String> string(JsonValue value) {
+        return field(value).asString();
+    }
+
+    public static Optional<List<JsonValue>> array(JsonValue value) {
+        return field(value).asArray();
+    }
+
+    public static Optional<Map<String, JsonValue>> object(JsonValue value) {
+        return field(value).asObject();
     }
 
     /** The {@code type} of a block or tool as sent, if any. */

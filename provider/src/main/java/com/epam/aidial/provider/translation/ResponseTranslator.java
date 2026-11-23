@@ -40,11 +40,13 @@ final class ResponseTranslator {
             }
             for (ResponseOutputMessage.Content part : message.content()) {
                 ResponseOutputText text = part.outputText().orElse(null);
-                if (text == null) {
+                if (text != null) {
+                    content.add(textBlock(text.text()));
+                } else if (part.refusal().isPresent()) {
+                    content.add(textBlock(part.refusal().get().refusal()));
+                } else {
                     log.warn("Dropping an unsupported Responses API content part");
-                    continue;
                 }
-                content.add(textBlock(text.text()));
             }
         }
         if (content.isEmpty()) {

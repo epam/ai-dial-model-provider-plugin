@@ -1,8 +1,5 @@
 package com.epam.aidial.provider.translation;
 
-import com.anthropic.models.beta.messages.BetaContentBlockParam;
-import com.anthropic.models.beta.messages.BetaMessageContentParam;
-import com.anthropic.models.beta.messages.BetaMessageParam;
 import com.anthropic.models.beta.messages.BetaTextBlockParam;
 import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.epam.aidial.provider.api.InvalidRequestException;
@@ -34,10 +31,10 @@ final class RequestTranslator {
      * @throws com.anthropic.errors.AnthropicInvalidDataException when a field it reads is missing or mistyped
      */
     static Map<String, Object> translate(MessageCreateParams.Body request, boolean stream) {
-        warnDropped(request);
         Map<String, Object> body = new LinkedHashMap<>();
         AnthropicJson.model(request).ifPresent(model -> body.put("model", model));
-        body.put("input", inputItems(request.messages()));
+        Dropped dropped = new Dropped();
+        body.put("input", new InputItems(new ContentParts(dropped), dropped).of(request.messages()));
         String instructions = instructions(request);
         if (!instructions.isEmpty()) {
             body.put("instructions", instructions);
@@ -54,6 +51,8 @@ final class RequestTranslator {
         AnthropicJson.number(request, "top_p").ifPresent(n -> body.put("top_p", n));
         request.serviceTier().map(tier -> serviceTier(tier.asString())).ifPresent(t -> body.put("service_tier", t));
         user(request).ifPresent(user -> body.put("user", user));
+        droppedParameters(request, dropped);
+        dropped.warn(log);
         return body;
     }
 
@@ -81,33 +80,27 @@ final class RequestTranslator {
         return user.filter(u -> !u.isEmpty());
     }
 
-    private static void warnDropped(MessageCreateParams.Body request) {
-        List<String> dropped = new ArrayList<>();
+    private static void droppedParameters(MessageCreateParams.Body request, Dropped dropped) {
         if (request._additionalProperties().containsKey("top_k")) {
-            dropped.add("top_k");
+            dropped.add("parameter top_k");
         }
         if (!request._stopSequences().isMissing()) {
-            dropped.add("stop_sequences");
+            dropped.add("parameter stop_sequences");
         }
         if (!request._compaction().isMissing()) {
-            dropped.add("compaction");
+            dropped.add("parameter compaction");
         }
         if (!request._mcpServers().isMissing()) {
-            dropped.add("mcp_servers");
+            dropped.add("parameter mcp_servers");
         }
         if (!request._container().isMissing()) {
-            dropped.add("container");
+            dropped.add("parameter container");
         }
         if (!request._inferenceGeo().isMissing()) {
-            dropped.add("inference_geo");
+            dropped.add("parameter inference_geo");
         }
         if (!request._contextManagement().isMissing()) {
-            dropped.add("context_management");
-        }
-        if (!dropped.isEmpty()) {
-            log.warn(
-                    "Ignoring Anthropic Messages API parameters that have no Responses API equivalent: {}.",
-                    String.join(", ", dropped));
+            dropped.add("parameter context_management");
         }
     }
 
@@ -121,71 +114,5 @@ final class RequestTranslator {
                     .forEach(parts::add));
         });
         return String.join("\n\n", parts);
-    }
-
-    private static List<Map<String, Object>> inputItems(List<BetaMessageParam> messages) {
-        List<Map<String, Object>> items = new ArrayList<>();
-        for (BetaMessageParam message : messages) {
-            String role = message.role().asString();
-            BetaMessageContentParam content = message.content().orElse(null);
-            switch (role) {
-                case "user" -> userTurn(content, items);
-                case "assistant" -> assistantTurn(content, items);
-                default -> throw new InvalidRequestException("Unsupported message role: " + role);
-            }
-        }
-        return items;
-    }
-
-    private static void userTurn(BetaMessageContentParam content, List<Map<String, Object>> items) {
-        List<Map<String, Object>> parts = new ArrayList<>();
-        for (String text : texts(content)) {
-            parts.add(textPart(text));
-        }
-        if (!parts.isEmpty()) {
-            items.add(message("user", parts));
-        }
-    }
-
-    private static void assistantTurn(BetaMessageContentParam content, List<Map<String, Object>> items) {
-        List<String> texts = texts(content);
-        if (!texts.isEmpty()) {
-            items.add(message("assistant", String.join("\n", texts)));
-        }
-    }
-
-    /** The non-empty texts of a turn: its string, or its text blocks. Other blocks are dropped. */
-    private static List<String> texts(BetaMessageContentParam content) {
-        List<String> texts = new ArrayList<>();
-        if (content == null) {
-            return texts;
-        }
-        content.string().filter(text -> !text.isEmpty()).ifPresent(texts::add);
-        for (BetaContentBlockParam block : content.contentBlockParams().orElse(List.of())) {
-            Optional<BetaTextBlockParam> text = block.text();
-            if (text.isPresent()) {
-                if (!text.get().text().isEmpty()) {
-                    texts.add(text.get().text());
-                }
-            } else {
-                log.warn("Dropping unsupported content block: {}", AnthropicJson.type(AnthropicJson.raw(block)));
-            }
-        }
-        return texts;
-    }
-
-    private static Map<String, Object> message(String role, Object content) {
-        Map<String, Object> message = new LinkedHashMap<>();
-        message.put("type", "message");
-        message.put("role", role);
-        message.put("content", content);
-        return message;
-    }
-
-    private static Map<String, Object> textPart(String text) {
-        Map<String, Object> part = new LinkedHashMap<>();
-        part.put("type", "input_text");
-        part.put("text", text);
-        return part;
     }
 }

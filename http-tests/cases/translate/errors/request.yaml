@@ -40,11 +40,6 @@ request: {json: {stream: 'yes'}}
 mocks: []
 expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: 'stream: must be a boolean'}}}
 ---
-name: streaming is not supported yet
-request: {json: {stream: true}}
-mocks: []
-expect: {status: 501, json: !replace {type: error, error: {type: api_error, message: Streaming is not supported yet}}}
----
 name: no deployment header is a failure of DIAL Core, not of the request
 request: {headers: {X-DIAL-DEPLOYMENT-ID: !delete }}
 mocks: []

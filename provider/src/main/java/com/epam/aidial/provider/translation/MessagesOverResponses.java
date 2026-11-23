@@ -56,14 +56,12 @@ public final class MessagesOverResponses implements ModelProvider {
         }
         ToolNames names = new ToolNames();
         Map<String, Object> translated;
+        boolean streaming;
         try {
             MessageCreateParams.Body body = AnthropicJson.parseRequest(Buffers.array(request.body()));
             boolean stream = AnthropicJson.stream(body);
-            if (stream) {
-                return Future.succeededFuture(
-                        AnthropicErrors.error(501, "api_error", "Streaming is not supported yet"));
-            }
             translated = RequestTranslator.translate(body, stream, names);
+            streaming = stream;
         } catch (InvalidRequestException e) {
             return Future.succeededFuture(invalidRequest(e.getMessage()));
         } catch (AnthropicInvalidDataException e) {
@@ -77,7 +75,9 @@ public final class MessagesOverResponses implements ModelProvider {
         }
         AdapterRequest call = upstreamRequest(request, Json.encode(translated));
         return Answers.call(upstream::create, call)
-                .map(answer -> answer(answer, deployment, names))
+                .map(answer -> streaming
+                        ? stream(answer, deployment, names, request.aborted())
+                        : answer(answer, deployment, names))
                 .recover(e -> request.aborted().isComplete() ? Future.failedFuture(e) : failed(e));
     }
 
@@ -106,6 +106,28 @@ public final class MessagesOverResponses implements ModelProvider {
             log.error("The Responses API answer could not be translated", e);
             return internalError();
         }
+    }
+
+    /** The upstream's stream, translated; its failure, as for an answer that is whole. */
+    private AdapterResponse stream(AdapterResponse answer, String deployment, ToolNames names, Future<Void> aborted) {
+        if (answer.status() >= 400) {
+            return relayedError(answer, bytes(answer));
+        }
+        TranslatedStream translated = new TranslatedStream(new StreamTranslator(deployment));
+        switch (answer.body()) {
+            case Body.Stream stream ->
+                stream.pipe().endOnFailure(false).to(translated.sink()).onFailure(translated::fail);
+            case Body.Bytes whole -> {
+                translated.sink().write(whole.buffer());
+                translated.sink().end();
+            }
+        }
+        AdapterResponse message = new AdapterResponse(
+                answer.status(),
+                MultiMap.caseInsensitiveMultiMap().set("Content-Type", "text/event-stream; charset=utf-8"),
+                new Body.Stream(translated.output().pipe()));
+        copyHeaders(answer.headers(), message.headers());
+        return message;
     }
 
     /** The upstream's failure with the same status, its message and its headers (a {@code Retry-After}, say). */

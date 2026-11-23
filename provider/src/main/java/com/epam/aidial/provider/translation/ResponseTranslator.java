@@ -77,7 +77,7 @@ final class ResponseTranslator {
         return message;
     }
 
-    private static Optional<String> incompleteReason(Response response) {
+    static Optional<String> incompleteReason(Response response) {
         return response.incompleteDetails().flatMap(details -> details.reason()).map(reason -> reason.asString());
     }
 
@@ -185,7 +185,7 @@ final class ResponseTranslator {
         return new LinkedHashMap<>();
     }
 
-    private static ResponseFailedException failure(Response response) {
+    static ResponseFailedException failure(Response response) {
         return response.error()
                 .map(error -> new ResponseFailedException(
                         ErrorCodes.status(error._code()
@@ -200,7 +200,7 @@ final class ResponseTranslator {
      * The tokens, as Anthropic counts them: {@code input_tokens} excludes the cache reads and writes, which the
      * Responses API's include, so the breakdown is capped for the counters to add up.
      */
-    private static Map<String, Object> usage(Response response) {
+    static Map<String, Object> usage(Response response) {
         Map<String, Object> usage = new LinkedHashMap<>();
         ResponseUsage tokens = response.usage().orElse(null);
         if (tokens == null) {

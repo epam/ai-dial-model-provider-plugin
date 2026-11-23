@@ -28,7 +28,7 @@ Responses request always has `store: false`.
 | `temperature`, `top_p` | the same |
 | `metadata.user_id` | `user`; dropped, not truncated, when longer than 64 characters |
 | `service_tier` | `auto` is `auto`, `standard_only` is `default`, any other is dropped |
-| `stream` | `stream` (streaming is not translated yet: such a request is answered `501`) |
+| `stream` | `stream`; the answer is a stream (see below) |
 
 ### Content blocks
 
@@ -195,6 +195,35 @@ The message is sparse: `id`, `type`, `role`, `model`, `content`, `stop_reason`, 
   message says `input_tokens` and `output_tokens` of 0 and nothing else.
 - An output item or content part this page does not list is dropped, with a warning in the log; so is an unknown value
   of an enumeration. Only what the translator reads is checked: a field it never looks at may be of any type.
+
+## Streaming
+
+With `stream: true` the answer is a Messages API event stream (`Content-Type: text/event-stream`), each event written as
+`event: <type>` and one line of compact JSON as `data:`.
+
+- `message_start` comes with the response's `response.created` (the message `id` is the response's), or, without one,
+  before the first block. Its `usage` is zeros; the final one is in `message_delta`.
+- One content block is open at a time; opening a block closes the one before. A text is a block of its own per content
+  part of an output item (`output_index`, `content_index`), a refusal's text too. The deltas are `text_delta`.
+- `response.completed` and `response.incomplete` end the message: an empty `text` block if nothing was sent, the
+  open block's `content_block_stop`, `message_delta` (the `stop_reason` and the `usage` of the final response, see
+  above) and `message_stop`. Events after the end are ignored.
+- A comment line of the upstream (`: ping`, which is how its heartbeat looks) is a `ping` event, wherever it falls.
+- The other events of the Responses API (`response.in_progress`, `response.content_part.added`, `response.output_text.done`,
+  ...) say nothing the message needs and are dropped; so is `[DONE]`. An event of a type outside the API's `response.`
+  namespace is named once in a warning.
+
+**What goes wrong in a stream** goes in an `error` event, the response being `200` already, and the stream ends:
+
+| What | `error.type`, message |
+| --- | --- |
+| a `response.failed` event, or an `error` event | by the error code, as for a response that failed: `rate_limit_error`, `timeout_error`, `invalid_request_error`, `api_error`, with the upstream's message |
+| the stream ends without `response.completed`, `response.incomplete` or a failure | `api_error`, "The Responses API stream ended before the response completed" |
+| an event that is not JSON, or has no `type`, or has a field the translator reads of the wrong type | `api_error`, "Internal server error"; the detail is logged |
+| the connection to the upstream breaks | `api_error`, "Internal server error"; the detail is logged |
+
+An upstream that answers a stream request with an error status gets the same error answer as for a request that is not
+streamed (a JSON body, not a stream). A client that goes away ends the upstream call.
 
 ## Failures
 

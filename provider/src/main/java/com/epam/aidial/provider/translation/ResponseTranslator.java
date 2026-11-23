@@ -101,7 +101,7 @@ final class ResponseTranslator {
      * content as the signature, the wrapper that lets the next turn replay it. Without text, the encrypted content is a
      * redacted block; without either, nothing.
      */
-    private static Optional<Map<String, Object>> thinkingBlock(ResponseReasoningItem item) {
+    static Optional<Map<String, Object>> thinkingBlock(ResponseReasoningItem item) {
         List<String> texts = new ArrayList<>();
         item.summary().forEach(part -> texts.add(part.text()));
         item.content().ifPresent(parts -> parts.forEach(part -> texts.add(part.text())));
@@ -144,6 +144,23 @@ final class ResponseTranslator {
             }
         }
         return isRefusal;
+    }
+
+    /** Whether a message holds a refusal. */
+    static boolean hasRefusal(ResponseOutputMessage message) {
+        return message.content().stream().anyMatch(part -> "refusal"
+                .equals(ResponsesJson.type(part._json()).orElse("")));
+    }
+
+    /** The web search blocks for the URLs a finished message cites for the first time. */
+    static List<Map<String, Object>> citationBlocks(ResponseOutputMessage message, Set<String> seenUrls) {
+        List<WebSearchBlocks.Citation> citations = new ArrayList<>();
+        for (ResponseOutputMessage.Content part : message.content()) {
+            if ("output_text".equals(ResponsesJson.type(part._json()).orElse(""))) {
+                citations.addAll(newCitations(part.outputText().orElseThrow(), seenUrls));
+            }
+        }
+        return WebSearchBlocks.of(citations);
     }
 
     /** The URL citations of a text that no text before it cited. */

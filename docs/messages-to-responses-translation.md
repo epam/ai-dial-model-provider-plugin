@@ -208,6 +208,19 @@ With `stream: true` the answer is a Messages API event stream (`Content-Type: te
 - `response.completed` and `response.incomplete` end the message: an empty `text` block if nothing was sent, the
   open block's `content_block_stop`, `message_delta` (the `stop_reason` and the `usage` of the final response, see
   above) and `message_stop`. Events after the end are ignored.
+- A function call is a `tool_use` block opened with its `output_item.added` event (`input` is `{}`, the tool's own name as
+  in the request), the argument deltas are `input_json_delta` events. If the upstream sent the arguments without deltas,
+  the whole `arguments` of `output_item.done` is one delta; with none, there is none. Two calls are two blocks.
+- Reasoning is a `thinking` block that opens with its first summary or content delta. A delta of another part (another
+  `summary_index`, or the content after the summary) is joined to the text before it by a blank line, as a response
+  that is not streamed joins them. The `signature` comes at the end, as a `signature_delta`, when the reasoning item is
+  done (the encrypted content arrives only then); an item with no encrypted content has no signature delta. A reasoning
+  whose text was not streamed is one whole block when its item is done, `redacted_thinking` if it has no text.
+- URLs cited by a finished message that no earlier message cited are a web search pair (a `server_tool_use` block and
+  its `web_search_tool_result` block, each one block of its own) after the message's text blocks.
+- The `stop_reason` of `message_delta` is as for a response that is not streamed: a tool call is `tool_use`, a refusal
+  item `refusal`, and what cut the response outranks both. `usage` holds the counters of the final response and its web
+  searches.
 - A comment line of the upstream (`: ping`, which is how its heartbeat looks) is a `ping` event, wherever it falls.
 - The other events of the Responses API (`response.in_progress`, `response.content_part.added`, `response.output_text.done`,
   ...) say nothing the message needs and are dropped; so is `[DONE]`. An event of a type outside the API's `response.`

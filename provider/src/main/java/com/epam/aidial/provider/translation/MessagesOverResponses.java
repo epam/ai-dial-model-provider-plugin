@@ -113,7 +113,7 @@ public final class MessagesOverResponses implements ModelProvider {
         if (answer.status() >= 400) {
             return relayedError(answer, bytes(answer));
         }
-        TranslatedStream translated = new TranslatedStream(new StreamTranslator(deployment));
+        TranslatedStream translated = new TranslatedStream(new StreamTranslator(deployment, names));
         switch (answer.body()) {
             case Body.Stream stream ->
                 stream.pipe().endOnFailure(false).to(translated.sink()).onFailure(translated::fail);

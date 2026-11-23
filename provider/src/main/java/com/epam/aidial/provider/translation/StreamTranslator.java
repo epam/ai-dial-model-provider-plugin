@@ -3,13 +3,18 @@ package com.epam.aidial.provider.translation;
 import com.epam.aidial.provider.json.Json;
 import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.responses.Response;
+import com.openai.models.responses.ResponseOutputItem;
+import com.openai.models.responses.ResponseOutputMessage;
+import com.openai.models.responses.ResponseReasoningItem;
 import com.openai.models.responses.ResponseStreamEvent;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +32,7 @@ final class StreamTranslator {
     private static final Logger log = LoggerFactory.getLogger(StreamTranslator.class);
 
     private final String model;
+    private final ToolNames names;
     private String messageId = java.util.UUID.randomUUID().toString();
     private int nextIndex;
     private boolean terminated;
@@ -34,9 +40,15 @@ final class StreamTranslator {
     private final java.util.Set<String> warnedTypes = new java.util.HashSet<>();
     private @Nullable String openKey;
     private int openIndex;
+    private boolean hasToolCall;
+    private boolean isRefusal;
+    private final Set<Long> streamedArguments = new HashSet<>();
+    private @Nullable String reasoningPart;
+    private final Set<String> seenUrls = new HashSet<>();
 
-    StreamTranslator(String model) {
+    StreamTranslator(String model, ToolNames names) {
         this.model = model;
+        this.names = names;
     }
 
     /** The upstream is alive, and says it between two events. */
@@ -89,6 +101,7 @@ final class StreamTranslator {
                 messageId = event.created().orElseThrow().response().id();
                 start(out);
             }
+            case "response.output_item.added" -> itemAdded(event, out);
             case "response.output_text.delta" -> {
                 var delta = event.outputTextDelta().orElseThrow();
                 textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta(), out);
@@ -97,6 +110,16 @@ final class StreamTranslator {
                 var delta = event.refusalDelta().orElseThrow();
                 textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta(), out);
             }
+            case "response.function_call_arguments.delta" -> argumentsDelta(event, out);
+            case "response.reasoning_summary_text.delta" -> {
+                var delta = event.reasoningSummaryTextDelta().orElseThrow();
+                thinkingDelta(delta.outputIndex(), "summary:" + delta.summaryIndex(), delta.delta(), out);
+            }
+            case "response.reasoning_text.delta" -> {
+                var delta = event.reasoningTextDelta().orElseThrow();
+                thinkingDelta(delta.outputIndex(), "content:" + delta.contentIndex(), delta.delta(), out);
+            }
+            case "response.output_item.done" -> itemDone(event, out);
             case "response.completed" -> finish(event.completed().orElseThrow().response(), out);
             case "response.incomplete" ->
                 finish(event.incomplete().orElseThrow().response(), out);
@@ -187,6 +210,98 @@ final class StreamTranslator {
         delta(block("text_delta", "text", text), out);
     }
 
+    private void thinkingDelta(long outputIndex, String part, String text, List<String> out) {
+        if (text.isEmpty()) {
+            return;
+        }
+        String key = "reasoning:" + outputIndex;
+        String shown = text;
+        if (!isOpen(key)) {
+            Map<String, Object> block = block("thinking", "thinking", "");
+            block.put("signature", "");
+            openBlock(key, block, out);
+        } else if (!part.equals(reasoningPart)) {
+            // Separates the summary parts the way a block response joins them
+            shown = "\n\n" + text;
+        }
+        reasoningPart = part;
+        delta(block("thinking_delta", "thinking", shown), out);
+    }
+
+    private void itemAdded(ResponseStreamEvent event, List<String> out) {
+        var added = event.outputItemAdded().orElseThrow();
+        ResponseOutputItem item = added.item();
+        if ("function_call".equals(ResponsesJson.type(item._json()).orElse(""))) {
+            hasToolCall = true;
+            var call = item.functionCall().orElseThrow();
+            Map<String, Object> block = block("tool_use", "id", call.callId());
+            block.put("name", names.toClient(call.name()));
+            block.put("input", Map.of());
+            openBlock("function:" + added.outputIndex(), block, out);
+        }
+    }
+
+    private void argumentsDelta(ResponseStreamEvent event, List<String> out) {
+        var delta = event.functionCallArgumentsDelta().orElseThrow();
+        if (!isOpen("function:" + delta.outputIndex()) || delta.delta().isEmpty()) {
+            return;
+        }
+        streamedArguments.add(delta.outputIndex());
+        delta(block("input_json_delta", "partial_json", delta.delta()), out);
+    }
+
+    private void itemDone(ResponseStreamEvent event, List<String> out) {
+        var done = event.outputItemDone().orElseThrow();
+        ResponseOutputItem item = done.item();
+        String type = ResponsesJson.type(item._json()).orElse("(none)");
+        switch (type) {
+            case "function_call" -> {
+                String key = "function:" + done.outputIndex();
+                if (!isOpen(key)) {
+                    return;
+                }
+                String arguments = item.functionCall().orElseThrow().arguments();
+                if (!streamedArguments.contains(done.outputIndex()) && !arguments.isEmpty()) {
+                    // The arguments an upstream sent without the deltas
+                    delta(block("input_json_delta", "partial_json", arguments), out);
+                }
+                closeBlock(out);
+            }
+            case "reasoning" ->
+                reasoningDone(
+                        "reasoning:" + done.outputIndex(), item.reasoning().orElseThrow(), out);
+            case "message" -> {
+                ResponseOutputMessage message = item.message().orElseThrow();
+                for (Map<String, Object> citation : ResponseTranslator.citationBlocks(message, seenUrls)) {
+                    openBlock("citation", citation, out);
+                    closeBlock(out);
+                }
+                isRefusal |= ResponseTranslator.hasRefusal(message);
+            }
+            default -> log.warn("Dropping an unsupported Responses API output item: {}", type);
+        }
+    }
+
+    /**
+     * The encrypted reasoning arrives once its text has been streamed: it is the signature of the open block. A
+     * reasoning whose text was not streamed is one whole block.
+     */
+    private void reasoningDone(String key, ResponseReasoningItem item, List<String> out) {
+        if (isOpen(key)) {
+            item.encryptedContent()
+                    .filter(encrypted -> !encrypted.isEmpty())
+                    .ifPresent(encrypted -> delta(
+                            block("signature_delta", "signature", new ReasoningWrapper(item.id(), encrypted).encode()),
+                            out));
+            closeBlock(out);
+        } else {
+            ResponseTranslator.thinkingBlock(item).ifPresent(block -> {
+                openBlock(key, block, out);
+                closeBlock(out);
+            });
+        }
+    }
+
     private void finish(Response response, List<String> out) {
         start(out);
         if (nextIndex == 0) {
@@ -194,7 +309,8 @@ final class StreamTranslator {
         }
         closeBlock(out);
         terminated = true;
-        String stopReason = ResponseTranslator.stopReason(ResponseTranslator.incompleteReason(response), false, false);
+        String stopReason =
+                ResponseTranslator.stopReason(ResponseTranslator.incompleteReason(response), hasToolCall, isRefusal);
         Map<String, Object> delta = new LinkedHashMap<>();
         delta.put("stop_reason", stopReason);
         delta.put("stop_sequence", null);

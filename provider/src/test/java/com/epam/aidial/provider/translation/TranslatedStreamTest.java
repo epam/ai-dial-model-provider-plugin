@@ -20,7 +20,7 @@ class TranslatedStreamTest {
             + "\"content_index\":0,\"delta\":\"x\"}\n\n";
     private static final String COMPLETED = "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\"}}\n\n";
 
-    private final TranslatedStream stream = new TranslatedStream(new StreamTranslator("m"));
+    private final TranslatedStream stream = new TranslatedStream(new StreamTranslator("m", new ToolNames()));
     private final List<String> received = new ArrayList<>();
     private final AtomicBoolean ended = new AtomicBoolean();
 

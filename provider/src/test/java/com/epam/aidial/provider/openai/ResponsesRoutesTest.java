@@ -48,6 +48,10 @@ class ResponsesRoutesTest {
     final RoutesFixture fx = new RoutesFixture();
 
     private Routes routes(String... settings) {
+        return Routes.of(responsesRoutes(settings));
+    }
+
+    private ResponsesRoutes responsesRoutes(String... settings) {
         Map<String, String> s = new HashMap<>(Map.of("HTTP_MAX_CONNECTIONS", "10"));
         for (int i = 0; i < settings.length; i += 2) {
             s.put(settings[i], settings[i + 1]);
@@ -57,7 +61,7 @@ class ResponsesRoutesTest {
                 fx.vertx(),
                 config,
                 () -> StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIDCHAIN", "s")));
-        return Routes.of(new ResponsesRoutes(
+        return new ResponsesRoutes(
                 fx.vertx(),
                 config,
                 "/compat/openai",
@@ -66,11 +70,29 @@ class ResponsesRoutesTest {
                 new AzureAd((scope, aborted) -> Future.succeededFuture("aad-tok"), "scope"),
                 aws,
                 null,
-                RoutesFixture.CLOCK));
+                RoutesFixture.CLOCK);
     }
 
     private String v1() {
         return fx.mock().url() + "/v1/responses";
+    }
+
+    @Test
+    void createServesTheRequestOfAnotherPathAsTheResponsesRouteDoes() throws Exception {
+        fx.mock().reply("/v1/responses", 200, Map.of("Content-Type", "application/json"), "{\"id\":\"resp_1\"}");
+        AdapterResponse answer = await(responsesRoutes()
+                .create(new AdapterRequest(
+                        HttpMethod.POST,
+                        "/anthropic/v1/messages",
+                        null,
+                        MultiMap.caseInsensitiveMultiMap()
+                                .add("X-Upstream-Endpoint", v1())
+                                .add("X-Upstream-Key", "k"),
+                        Buffer.buffer(HI),
+                        Promise.<Void>promise().future())));
+        assertEquals(200, answer.status());
+        assertEquals("{\"id\":\"resp_1\"}", read(answer));
+        assertEquals(HI, fx.mock().last().body());
     }
 
     /** operations "Request body held once": not while the upstream has yet to answer. */

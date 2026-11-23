@@ -25,3 +25,17 @@ expect: {json: {error: {message: X-UPSTREAM-KEY header is missing in the request
 name: Azure host without /anthropic is not Foundry and needs a key
 request: {headers: {X-Upstream-Endpoint: 'https://r.openai.azure.com/v1/messages', X-Upstream-Key: !delete }}
 expect: {json: {error: {message: X-UPSTREAM-KEY header is missing in the request.}}}
+---
+# An endpoint of the Responses API is not a Messages upstream: the route refuses it (the Messages route does not
+# translate to the Responses API; it would have to be asked to).
+name: Responses API endpoint
+request: {headers: {X-Upstream-Endpoint: 'http://h.invalid/openai/v1/responses'}}
+expect: {json: {error: {message: Invalid upstream endpoint format}}}
+---
+name: Responses API endpoint of Azure
+request: {headers: {X-Upstream-Endpoint: 'https://r.openai.azure.com/openai/responses'}}
+expect: {json: {error: {message: Invalid upstream endpoint format}}}
+---
+name: Responses API endpoint, count_tokens
+request: {path: /anthropic/v1/messages/count_tokens, headers: {X-Upstream-Endpoint: 'http://h.invalid/v1/responses'}}
+expect: {json: {error: {message: Invalid upstream endpoint format}}}

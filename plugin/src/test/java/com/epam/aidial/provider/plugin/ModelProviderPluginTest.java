@@ -127,6 +127,44 @@ class ModelProviderPluginTest {
     }
 
     @Test
+    void anAdapterThatIsNotTextIsNoAdapter() {
+        ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
+        ObjectNode object = settings();
+        object.putObject("adapter");
+        for (ObjectNode entry : List.of(
+                settings().putNull("adapter"),
+                settings().put("adapter", true),
+                settings().put("adapter", 1.5),
+                object)) {
+            assertEquals("adapter", single(provider.validate(entry)).path(), entry.toString());
+        }
+    }
+
+    @Test
+    void anEntrysValuesAreTheTextTheEnvironmentWouldHold() {
+        ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
+        ObjectNode object = settings("adapter", "bedrock");
+        object.putObject("AWS_SESSION_TAGS").put("team", "a");
+        assertEquals(List.of(), provider.validate(object), "an object is its JSON");
+
+        ObjectNode array = settings("adapter", "bedrock");
+        array.putArray("AWS_SESSION_TAGS").add("a");
+        PluginProvider.Problem notObject = single(provider.validate(array));
+        assertEquals("AWS_SESSION_TAGS", notObject.path(), "an array is its JSON, which is no object of strings");
+        assertTrue(notObject.message().contains("must be a JSON object of strings"), notObject.message());
+
+        assertEquals(
+                new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"),
+                single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", 1.5))),
+                "a number is its text");
+        assertEquals(
+                "HTTP_MAX_CONNECTIONS",
+                single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", true)))
+                        .path(),
+                "a boolean is its text");
+    }
+
+    @Test
     void settingsFromTheEntryThenTheEnvironment() throws Exception {
         MultiMap keyed = MultiMap.caseInsensitiveMultiMap().add("X-Upstream-Key", "k");
         Plugin fromEntry = plugin(

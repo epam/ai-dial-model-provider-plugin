@@ -8,14 +8,18 @@ import io.vertx.core.Future;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** The details of a failure are logged, never sent to the client. */
-final class AnthropicErrors {
+/**
+ * The Anthropic error body ({@link #error}) and the failures of the Messages route as answers. The details of a failure
+ * are logged, never sent to the client.
+ */
+public final class AnthropicErrors {
 
     private static final String API_ERROR = "api_error";
 
     private AnthropicErrors() {}
 
-    private static AdapterResponse error(int status, String type, String message) {
+    /** {@code {"error":{"message":m,"type":t},"type":"error"}} and a line feed, the shape every Anthropic client reads. */
+    public static AdapterResponse error(int status, String type, String message) {
         Map<String, Object> e = new LinkedHashMap<>();
         e.put("message", message);
         e.put("type", type);

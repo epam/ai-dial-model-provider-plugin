@@ -1,0 +1,29 @@
+# What the translator lets pass: the Responses API has more than it reads.
+---
+name: {{ (mode ~ ": " ~ "status of a value the translator does not know does not fail the answer") | tojson }}
+mocks: [{response: {json: {status: future_status}}}]
+---
+name: {{ (mode ~ ": " ~ "fields the translator never reads are not checked") | tojson }}
+mocks:
+- response:
+    json:
+      created_at: yesterday
+      parallel_tool_calls: maybe
+      temperature: warm
+      metadata: 5
+      extra: {a: 1}
+---
+name: {{ (mode ~ ": " ~ "fields of an item the translator never reads are not checked") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - {type: message, id: m1, role: assistant, status: weird, phase: {a: 1}, content: [{type: output_text, text: Hello, annotations: [], logprobs: nope}]}
+---
+name: {{ (mode ~ ": " ~ "item without a type is not an item") | tojson }}
+mocks: [{response: {json: {output: !replace [{id: m1}]}}}]
+expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: Internal server error}}}
+---
+name: {{ (mode ~ ": " ~ "content part without a type is not a part") | tojson }}
+mocks: [{response: {json: {output: !replace [{type: message, id: m1, role: assistant, status: completed, content: [{text: Hello}]}]}}}]
+expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: Internal server error}}}

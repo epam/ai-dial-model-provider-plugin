@@ -1,0 +1,53 @@
+# The turns of the request: the input items and instructions they become.
+---
+name: {{ (mode ~ ": " ~ "user text blocks are the parts of one message") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: text, text: a}, {type: text, text: b}]}]}}
+mocks:
+- request: {json: {input: [{content: [{type: input_text, text: a}, {type: input_text, text: b}]}]}}
+---
+name: {{ (mode ~ ": " ~ "empty user text sends no message") | tojson }}
+request: {json: {messages: [{role: user, content: ''}]}}
+mocks: [{request: {json: {input: !replace []}}}]
+---
+name: {{ (mode ~ ": " ~ "empty user text blocks are dropped") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: text, text: ''}, {type: text, text: a}]}]}}
+mocks:
+- request: {json: {input: [{content: [{type: input_text, text: a}]}]}}
+---
+name: {{ (mode ~ ": " ~ "assistant text is a message of its own") | tojson }}
+request: {json: {messages: [{role: user, content: hi}, {role: assistant, content: Hello}, {role: user, content: more}]}}
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: message, role: assistant, content: Hello}
+      - {type: message, role: user, content: [{type: input_text, text: more}]}
+---
+name: {{ (mode ~ ": " ~ "adjacent assistant text blocks are joined by a line feed") | tojson }}
+request: {json: {messages: [{role: user, content: hi}, {role: assistant, content: [{type: text, text: a}, {type: text, text: b}]}]}}
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: message, role: assistant, content: "a\nb"}
+---
+name: {{ (mode ~ ": " ~ "system string becomes instructions") | tojson }}
+request: {json: {system: Be brief}}
+mocks: [{request: {json: {instructions: Be brief}}}]
+---
+name: {{ (mode ~ ": " ~ "system text blocks are joined by a blank line") | tojson }}
+request: {json: {system: [{type: text, text: A}, {type: text, text: B}]}}
+mocks: [{request: {json: {instructions: "A\n\nB"}}}]
+---
+name: {{ (mode ~ ": " ~ "empty system sends no instructions") | tojson }}
+request: {json: {system: ''}}
+---
+name: {{ (mode ~ ": " ~ "empty system text blocks are dropped") | tojson }}
+request: {json: {system: [{type: text, text: ''}, {type: text, text: A}]}}
+mocks: [{request: {json: {instructions: A}}}]
+---
+name: {{ (mode ~ ": " ~ "cache_control changes nothing") | tojson }}
+request: {json: {system: [{type: text, text: A, cache_control: {type: ephemeral}}]}}
+mocks: [{request: {json: {instructions: A}}}]

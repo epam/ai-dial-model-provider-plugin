@@ -1,0 +1,133 @@
+# The tool calls and results of the turns.
+---
+name: {{ (mode ~ ": " ~ "assistant tool_use is a function call") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - {role: assistant, content: [{type: tool_use, id: t1, name: f, input: {a: 1}}]}
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: function_call, call_id: t1, name: f, arguments: '{"a":1}'}
+---
+name: {{ (mode ~ ": " ~ "tool_use without input has empty arguments") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - {role: assistant, content: [{type: tool_use, id: t1, name: f}]}
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: function_call, call_id: t1, name: f, arguments: '{}'}
+---
+name: {{ (mode ~ ": " ~ "assistant blocks keep their order, the adjacent texts are one message") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - role: assistant
+      content:
+      - {type: text, text: a}
+      - {type: text, text: b}
+      - {type: tool_use, id: t1, name: f, input: {}}
+      - {type: text, text: c}
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: message, role: assistant, content: "a\nb"}
+      - {type: function_call, call_id: t1, name: f, arguments: '{}'}
+      - {type: message, role: assistant, content: c}
+---
+name: {{ (mode ~ ": " ~ "tool_result of a text is a string output") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: [{type: tool_result, tool_use_id: t1, content: [{type: text, text: one}, {type: text, text: two}]}]}
+mocks:
+- request: {json: {input: !replace [{type: function_call_output, call_id: t1, output: "one\ntwo"}]}}
+---
+name: {{ (mode ~ ": " ~ "tool_result of a string") | tojson }}
+request:
+  json:
+    messages: [{role: user, content: [{type: tool_result, tool_use_id: t1, content: ok}]}]
+mocks:
+- request: {json: {input: !replace [{type: function_call_output, call_id: t1, output: ok}]}}
+---
+name: {{ (mode ~ ": " ~ "tool_result without content is an empty output") | tojson }}
+request:
+  json:
+    messages: [{role: user, content: [{type: tool_result, tool_use_id: t1}]}]
+mocks:
+- request: {json: {input: !replace [{type: function_call_output, call_id: t1, output: ''}]}}
+---
+name: {{ (mode ~ ": " ~ "tool_result of an error is prefixed") | tojson }}
+request:
+  json:
+    messages: [{role: user, content: [{type: tool_result, tool_use_id: t1, is_error: true, content: boom}]}]
+mocks:
+- request: {json: {input: !replace [{type: function_call_output, call_id: t1, output: 'Error: boom'}]}}
+---
+name: {{ (mode ~ ": " ~ "tool_result with an image keeps its parts") | tojson }}
+request:
+  json:
+    messages:
+    - role: user
+      content:
+      - type: tool_result
+        tool_use_id: t1
+        content: [{type: text, text: see}, {type: image, source: {type: url, url: 'https://h/i.png'}}]
+mocks:
+- request:
+    json:
+      input: !replace
+      - type: function_call_output
+        call_id: t1
+        output: [{type: input_text, text: see}, {type: input_image, image_url: 'https://h/i.png', detail: auto}]
+---
+name: {{ (mode ~ ": " ~ "tool_result of an error with an image has an Error part first") | tojson }}
+request:
+  json:
+    messages:
+    - role: user
+      content:
+      - type: tool_result
+        tool_use_id: t1
+        is_error: true
+        content: [{type: image, source: {type: url, url: 'https://h/i.png'}}]
+mocks:
+- request:
+    json:
+      input: !replace
+      - type: function_call_output
+        call_id: t1
+        output: [{type: input_text, text: 'Error:'}, {type: input_image, image_url: 'https://h/i.png', detail: auto}]
+---
+name: {{ (mode ~ ": " ~ "tool_reference in a tool_result is dropped") | tojson }}
+request:
+  json:
+    messages:
+    - role: user
+      content: [{type: tool_result, tool_use_id: t1, content: [{type: tool_reference, tool_name: x}, {type: text, text: ok}]}]
+mocks:
+- request: {json: {input: !replace [{type: function_call_output, call_id: t1, output: ok}]}}
+---
+name: {{ (mode ~ ": " ~ "outputs come before the user text of the turn") | tojson }}
+request:
+  json:
+    messages:
+    - role: user
+      content: [{type: text, text: now}, {type: tool_result, tool_use_id: t1, content: ok}]
+mocks:
+- request:
+    json:
+      input: !replace
+      - {type: function_call_output, call_id: t1, output: ok}
+      - {type: message, role: user, content: [{type: input_text, text: now}]}

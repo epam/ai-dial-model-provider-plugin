@@ -1,0 +1,138 @@
+# The tools of the request, and the tool_choice that names them.
+---
+name: {{ (mode ~ ": " ~ "custom tool is a function tool") | tojson }}
+request:
+  json:
+    tools: [{name: f, description: Does f, input_schema: {type: object, properties: {a: {type: string}}, required: [a]}}]
+mocks:
+- request:
+    json:
+      tools: [{type: function, name: f, description: Does f, parameters: {type: object, properties: {a: {type: string}}, required: [a]}, strict: false}]
+---
+name: {{ (mode ~ ": " ~ "custom tool of type custom is a function tool") | tojson }}
+request: {json: {tools: [{type: custom, name: f, input_schema: {type: object}}]}}
+mocks: [{request: {json: {tools: [{type: function, name: f, parameters: {type: object}, strict: false}]}}}]
+---
+name: {{ (mode ~ ": " ~ "strict is sent") | tojson }}
+request: {json: {tools: [{name: f, strict: true, input_schema: {type: object}}]}}
+mocks: [{request: {json: {tools: [{type: function, name: f, parameters: {type: object}, strict: true}]}}}]
+---
+name: {{ (mode ~ ": " ~ "$schema is dropped from the parameters") | tojson }}
+request: {json: {tools: [{name: f, input_schema: {"$schema": 'http://json-schema.org/draft-07/schema#', type: object}}]}}
+mocks: [{request: {json: {tools: [{type: function, name: f, parameters: {type: object}, strict: false}]}}}]
+---
+name: {{ (mode ~ ": " ~ "tool without a description has none") | tojson }}
+request: {json: {tools: [{name: f, description: '', input_schema: {type: object}}]}}
+mocks: [{request: {json: {tools: [{type: function, name: f, parameters: {type: object}, strict: false}]}}}]
+---
+name: {{ (mode ~ ": " ~ "tool without a schema takes no arguments") | tojson }}
+request: {json: {tools: [{name: f}]}}
+mocks: [{request: {json: {tools: [{type: function, name: f, parameters: {type: object, properties: {}}, strict: false}]}}}]
+---
+name: {{ (mode ~ ": " ~ "web search tool is the built-in one") | tojson }}
+request: {json: {tools: [{type: web_search_20250305, name: web_search}]}}
+mocks: [{request: {json: {tools: [{type: web_search}]}}}]
+---
+name: {{ (mode ~ ": " ~ "web search allowed domains are a filter") | tojson }}
+request: {json: {tools: [{type: web_search_20250305, name: web_search, allowed_domains: [a.com, b.com]}]}}
+mocks: [{request: {json: {tools: [{type: web_search, filters: {allowed_domains: [a.com, b.com]}}]}}}]
+---
+name: {{ (mode ~ ": " ~ "web search user location is approximate, what is not given is null") | tojson }}
+request: {json: {tools: [{type: web_search_20250305, name: web_search, user_location: {type: approximate, city: Paris, country: FR}}]}}
+mocks: [{request: {json: {tools: [{type: web_search, user_location: {type: approximate, city: Paris, country: FR, region: null, timezone: null}}]}}}]
+---
+name: {{ (mode ~ ": " ~ "web search blocked domains are dropped") | tojson }}
+request: {json: {tools: [{type: web_search_20250305, name: web_search, blocked_domains: [x.com]}]}}
+mocks: [{request: {json: {tools: [{type: web_search}]}}}]
+---
+name: {{ (mode ~ ": " ~ "max_uses of the only web search is max_tool_calls") | tojson }}
+request: {json: {tools: [{type: web_search_20250305, name: web_search, max_uses: 3}]}}
+mocks: [{request: {json: {tools: [{type: web_search}], max_tool_calls: 3}}}]
+---
+name: {{ (mode ~ ": " ~ "max_uses of several web searches is dropped") | tojson }}
+request:
+  json:
+    tools: [{type: web_search_20250305, name: web_search, max_uses: 3}, {type: web_search_20260209, name: web_search_2, max_uses: 5}]
+mocks: [{request: {json: {tools: [{type: web_search}, {type: web_search}]}}}]
+---
+name: {{ (mode ~ ": " ~ "tool of another type is forwarded as sent") | tojson }}
+request: {json: {tools: [{type: bash_20250124, name: bash}]}}
+mocks: [{request: {json: {tools: [{type: bash_20250124, name: bash}]}}}]
+---
+name: {{ (mode ~ ": " ~ "tool of a type from the future is forwarded as sent") | tojson }}
+request: {json: {tools: [{type: brand_new_tool_2030, name: zzz, option: {a: 1}}]}}
+mocks: [{request: {json: {tools: [{type: brand_new_tool_2030, name: zzz, option: {a: 1}}]}}}]
+---
+name: {{ (mode ~ ": " ~ "tool name that the Responses API refuses is an alias") | tojson }}
+request: {json: {tools: [{name: get weather, input_schema: {type: object}}]}}
+mocks: [{request: {json: {tools: [{type: function, name: get_weather_dce3870e, parameters: {type: object}, strict: false}]}}}]
+---
+name: {{ (mode ~ ": " ~ "tool name that starts with a digit has a t_ prefix") | tojson }}
+request: {json: {tools: [{name: 1st, input_schema: {type: object}}]}}
+mocks: [{request: {json: {tools: [{type: function, name: t_1st_e01ddf65, parameters: {type: object}, strict: false}]}}}]
+---
+name: {{ (mode ~ ": " ~ "tool name of more than 64 characters is cut and has a digest") | tojson }}
+request: {json: {tools: [{name: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, input_schema: {type: object}}]}}
+mocks: [{request: {json: {tools: [{type: function, name: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_c71bd109, parameters: {type: object}, strict: false}]}}}]
+---
+name: {{ (mode ~ ": " ~ "alias in tool_choice") | tojson }}
+request: {json: {tools: [{name: get weather, input_schema: {type: object}}], tool_choice: {type: tool, name: get weather}}}
+mocks: [{request: {json: {tools: [{type: function, name: get_weather_dce3870e, parameters: {type: object}, strict: false}], tool_choice: {type: function, name: get_weather_dce3870e}}}}]
+---
+name: {{ (mode ~ ": " ~ "alias in a replayed tool_use") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - {role: assistant, content: [{type: tool_use, id: t1, name: get weather, input: {}}]}
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: function_call, call_id: t1, name: get_weather_dce3870e, arguments: '{}'}
+---
+name: {{ (mode ~ ": " ~ "tool_choice auto") | tojson }}
+request: {json: {tool_choice: {type: auto}}}
+mocks: [{request: {json: {tool_choice: auto}}}]
+---
+name: {{ (mode ~ ": " ~ "tool_choice any is required") | tojson }}
+request: {json: {tool_choice: {type: any}}}
+mocks: [{request: {json: {tool_choice: required}}}]
+---
+name: {{ (mode ~ ": " ~ "tool_choice none") | tojson }}
+request: {json: {tool_choice: {type: none}}}
+mocks: [{request: {json: {tool_choice: none}}}]
+---
+name: {{ (mode ~ ": " ~ "tool_choice of a tool names the function") | tojson }}
+request: {json: {tools: [{name: f, input_schema: {type: object}}], tool_choice: {type: tool, name: f}}}
+mocks: [{request: {json: {tools: [{type: function, name: f, parameters: {type: object}, strict: false}], tool_choice: {type: function, name: f}}}}]
+---
+name: {{ (mode ~ ": " ~ "tool_choice of the web search tool allows it and requires one") | tojson }}
+request: {json: {tools: [{type: web_search_20250305, name: web_search}], tool_choice: {type: tool, name: web_search}}}
+mocks: [{request: {json: {tools: [{type: web_search}], tool_choice: {type: allowed_tools, mode: required, tools: [{type: web_search}]}}}}]
+---
+name: {{ (mode ~ ": " ~ "tool_choice of a type from the future is not sent") | tojson }}
+request: {json: {tool_choice: {type: brand_new}}}
+---
+name: {{ (mode ~ ": " ~ "disable_parallel_tool_use is parallel_tool_calls false") | tojson }}
+request: {json: {tool_choice: {type: auto, disable_parallel_tool_use: true}}}
+mocks: [{request: {json: {tool_choice: auto, parallel_tool_calls: false}}}]
+---
+name: {{ (mode ~ ": " ~ "parallel tool use that is not disabled is parallel_tool_calls true") | tojson }}
+request: {json: {tool_choice: {type: auto, disable_parallel_tool_use: false}}}
+mocks: [{request: {json: {tool_choice: auto, parallel_tool_calls: true}}}]
+---
+name: {{ (mode ~ ": " ~ "no disable_parallel_tool_use sends no parallel_tool_calls") | tojson }}
+request: {json: {tool_choice: {type: any}}}
+mocks: [{request: {json: {tool_choice: required}}}]
+---
+name: {{ (mode ~ ": " ~ "json_schema output format is a strict response schema") | tojson }}
+request: {json: {output_config: {format: {type: json_schema, schema: {type: object, properties: {a: {type: string}}}}}}}
+mocks: [{request: {json: {text: {format: {type: json_schema, name: response, schema: {type: object, properties: {a: {type: string}}}, strict: true}}}}}]
+---
+name: {{ (mode ~ ": " ~ "output format that is no json_schema is dropped") | tojson }}
+request: {json: {output_config: {format: {type: grammar, schema: {type: object}}}}}
+---
+name: {{ (mode ~ ": " ~ "output format without a schema is dropped") | tojson }}
+request: {json: {output_config: {format: {type: json_schema}}}}

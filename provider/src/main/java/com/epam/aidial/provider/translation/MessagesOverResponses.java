@@ -12,6 +12,7 @@ import com.epam.aidial.provider.core.Answers;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.json.Json;
 import com.epam.aidial.provider.upstream.AdapterErrors;
+import com.epam.aidial.provider.upstream.UpstreamClient;
 import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.responses.Response;
 import io.vertx.core.Future;
@@ -22,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +46,11 @@ public final class MessagesOverResponses implements ModelProvider {
     static final String DEPLOYMENT_HEADER = "X-DIAL-DEPLOYMENT-ID";
 
     private final ResponsesUpstream upstream;
+
+    /** Served through its own client, which is {@code ModelProviders}' to close. */
+    public static MessagesOverResponses overDialCore(UpstreamClient client, @Nullable String dialUrl) {
+        return new MessagesOverResponses(new DialCoreUpstream(client, dialUrl));
+    }
 
     public MessagesOverResponses(ResponsesUpstream upstream) {
         this.upstream = upstream;

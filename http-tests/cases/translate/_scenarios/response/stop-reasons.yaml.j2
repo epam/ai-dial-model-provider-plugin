@@ -1,0 +1,43 @@
+# What the answer was stopped by.
+---
+name: {{ (mode ~ ": " ~ "end_turn when nothing says otherwise") | tojson }}
+expect: {json: {stop_reason: end_turn}}
+---
+name: {{ (mode ~ ": " ~ "a refusal is the stop reason refusal") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - {type: message, id: m1, role: assistant, status: completed, content: [{type: refusal, refusal: I cannot}]}
+expect: {json: {content: !replace [{type: text, text: I cannot}], stop_reason: refusal}}
+---
+name: {{ (mode ~ ": " ~ "an answer cut by the output budget is max_tokens") | tojson }}
+mocks: [{response: {json: {status: incomplete, incomplete_details: {reason: max_output_tokens}}}}]
+expect: {json: {stop_reason: max_tokens}}
+---
+name: {{ (mode ~ ": " ~ "an answer cut by the output budget in the middle of a tool call is max_tokens, not tool_use") | tojson }}
+mocks:
+- response:
+    json:
+      status: incomplete
+      incomplete_details: {reason: max_output_tokens}
+      output: !replace
+      - {type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{"a"', status: incomplete}
+expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}}], stop_reason: max_tokens}}
+---
+name: {{ (mode ~ ": " ~ "an answer stopped by the content filter is refusal") | tojson }}
+mocks: [{response: {json: {status: incomplete, incomplete_details: {reason: content_filter}}}}]
+expect: {json: {stop_reason: refusal}}
+---
+name: {{ (mode ~ ": " ~ "an answer cut for another reason is what it holds") | tojson }}
+mocks: [{response: {json: {status: incomplete, incomplete_details: {reason: future_reason}}}}]
+expect: {json: {stop_reason: end_turn}}
+---
+name: {{ (mode ~ ": " ~ "a tool call outranks a refusal") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - {type: message, id: m1, role: assistant, status: completed, content: [{type: refusal, refusal: 'No'}]}
+      - {type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{}', status: completed}
+expect: {json: {content: !replace [{type: text, text: 'No'}, {type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}

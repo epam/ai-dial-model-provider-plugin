@@ -181,6 +181,34 @@ class CompatRouterTest {
     }
 
     @Test
+    void translatorIsServedBelowItsOwnPrefix() throws Exception {
+        Vertx vertx = Vertx.vertx();
+        try {
+            CompatRouter served = ModelProviders.create(vertx, Config.from(Map.of()));
+            AdapterResponse messages =
+                    await(served.handle(request(HttpMethod.POST, "/openaiResponses/anthropic/v1/messages", null)));
+            assertEquals(400, messages.status(), "the translator answers: this body has no messages");
+            assertEquals("application/json", messages.headers().get("Content-Type"));
+            assertTrue(body(messages).contains("messages` is not set"), body(messages));
+            AdapterResponse other =
+                    await(served.handle(request(HttpMethod.GET, "/openaiResponses/anthropic/v1/messages", null)));
+            assertEquals(404, other.status());
+            assertEquals(
+                    "{\"error\":{\"message\":\"Unknown endpoint: /anthropic/v1/messages\","
+                            + "\"type\":\"not_found_error\"},\"type\":\"error\"}\n",
+                    body(other));
+            for (String path : List.of("/openaiResponses", "/openaiResponsesX/anthropic/v1/messages")) {
+                AdapterResponse r = await(served.handle(request(HttpMethod.POST, path, null)));
+                assertEquals(404, r.status(), path);
+                assertEquals("{\"detail\":\"Not Found\"}", body(r), path);
+            }
+            served.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        } finally {
+            vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     void closeClosesUpstreamConnections() throws Exception {
         Vertx vertx = Vertx.vertx();
         try {

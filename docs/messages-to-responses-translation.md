@@ -9,11 +9,32 @@ A model whose upstream speaks only the OpenAI Responses API can be called with t
 | ends in `/responses` | translates the request for the Responses API, calls the upstream, and translates the answer back |
 | neither | refuses it (`502`, "Invalid upstream endpoint format") |
 
+The same translation also runs as a service of DIAL Core, where the Responses call goes to DIAL Core itself (see
+[As a service of DIAL Core](#as-a-service-of-dial-core)).
+
 The translation is a port of the Python translator of the DIAL SDK. Nothing is stored between requests, so the
 Responses request always has `store: false`.
 
 > This page grows with the translation. It describes what is translated *so far*; what is not listed here is not
 > translated yet.
+
+## As a service of DIAL Core
+
+DIAL Core's *translator* contract lets a model's interface be served by a service: Core forwards the call to `<base URL>`
+and the exact path of the interface, and the service calls Core back, with the caller's key, for the API the model
+speaks. The process serves this at **`POST /openaiResponses/anthropic/v1/messages`**: configure the Anthropic Messages
+interface of a model (`anthropicMessages`) as a translator with the base URL `<this service>/openaiResponses`.
+
+| | |
+| --- | --- |
+| the call back | `POST <DIAL_URL>openai/v1/responses`. The `model` of its body is the deployment's name (`X-DIAL-DEPLOYMENT-ID`): DIAL Core routes the Responses API by the model |
+| headers that go back | `api-key` (the per-request key), `x-dial-cache-policy`, `x-upstream-id`; any other is dropped. So the cache affinity headers do not go: DIAL Core runs the affinity of the call back itself |
+| `DIAL_URL` is not set | `500`, "Internal server error"; nothing is called |
+| DIAL Core cannot be reached | `502`, "Failed to reach DIAL Core" |
+| any other request below `/openaiResponses` (`count_tokens`, another path, another method) | `404`, `{"type":"error","error":{"type":"not_found_error","message":"Unknown endpoint: <path>"}}` |
+
+Everything below is the same translation, in both ways of calling it; the answer to a failed call back is relayed as
+described in [Failures](#failures).
 
 ## The request
 

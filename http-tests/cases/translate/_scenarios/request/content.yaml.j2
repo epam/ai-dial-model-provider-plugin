@@ -1,0 +1,79 @@
+# The content blocks of a user turn: the parts of its message.
+---
+name: {{ (mode ~ ": " ~ "image of base64 data") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: image, source: {type: base64, media_type: image/jpeg, data: AAA}}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_image, image_url: 'data:image/jpeg;base64,AAA', detail: auto}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "image of base64 data without a media type is a png") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: image, source: {type: base64, data: AAA}}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_image, image_url: 'data:image/png;base64,AAA', detail: auto}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "image of a URL") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: image, source: {type: url, url: 'https://h/i.png'}}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_image, image_url: 'https://h/i.png', detail: auto}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "document of base64 data") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: document, title: Spec, source: {type: base64, media_type: application/pdf, data: AAA}}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_file, filename: Spec, file_data: 'data:application/pdf;base64,AAA'}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "document of base64 data without a title is document.pdf") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: document, source: {type: base64, media_type: application/pdf, data: AAA}}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_file, filename: document.pdf, file_data: 'data:application/pdf;base64,AAA'}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "document of a URL") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: document, source: {type: url, url: 'https://h/d.pdf'}}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_file, file_url: 'https://h/d.pdf'}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "document of plain text") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: document, source: {type: text, media_type: text/plain, data: some text}}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_text, text: some text}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "document of a string content") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: document, source: {type: content, content: some text}}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_text, text: some text}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "document of text and image blocks") | tojson }}
+request:
+  json:
+    messages:
+    - role: user
+      content:
+      - type: document
+        source:
+          type: content
+          content: [{type: text, text: a}, {type: image, source: {type: url, url: 'https://h/i.png'}}]
+mocks: [{request: {json: {input: [{content: !replace [{type: input_text, text: a}, {type: input_image, image_url: 'https://h/i.png', detail: auto}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "search result is a text of its title, source and texts") | tojson }}
+request:
+  json:
+    messages:
+    - role: user
+      content:
+      - type: search_result
+        title: T
+        source: 'https://h/s'
+        content: [{type: text, text: one}, {type: text, text: two}]
+mocks: [{request: {json: {input: [{content: !replace [{type: input_text, text: "T\nhttps://h/s\n\none\ntwo"}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "compaction is its text") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: compaction, content: summary}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_text, text: summary}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "compaction without content is nothing") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: compaction}, {type: text, text: a}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_text, text: a}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "block of a type the translator does not know is dropped") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: brand_new_block, a: 1}, {type: text, text: a}]}]}}
+mocks: [{request: {json: {input: [{content: !replace [{type: input_text, text: a}]}]}}}]
+---
+name: {{ (mode ~ ": " ~ "image of a file is refused") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: image, source: {type: file, file_id: f1}}]}]}}
+mocks: []
+expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: "Files uploaded via Anthropic Files API aren't supported."}}}
+---
+name: {{ (mode ~ ": " ~ "document of a file is refused") | tojson }}
+request: {json: {messages: [{role: user, content: [{type: document, source: {type: file, file_id: f1}}]}]}}
+mocks: []
+expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: "Files uploaded via Anthropic Files API aren't supported."}}}

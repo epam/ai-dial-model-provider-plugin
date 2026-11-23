@@ -15,11 +15,14 @@ import com.epam.aidial.provider.credentials.SessionTags;
 import com.epam.aidial.provider.openai.ResponsesRoutes;
 import com.epam.aidial.provider.translation.ApiDispatch;
 import com.epam.aidial.provider.translation.MessagesOverResponses;
+import com.epam.aidial.provider.translation.TranslatorMount;
+import com.epam.aidial.provider.upstream.Limits;
 import com.epam.aidial.provider.upstream.Proxies;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -57,13 +60,32 @@ public final class ModelProviders {
                 google,
                 now));
 
-        List<UpstreamClient> clients = List.of(openaiClient, vertexaiClient, bedrockClient);
+        // The translator's calls back to DIAL Core: outside the mounts' caps, as DialApi's are
+        UpstreamClient dialCoreClient = new UpstreamClient(vertx, proxies, Limits.uncapped(Duration.ofMinutes(10)));
+        List<UpstreamClient> clients = List.of(openaiClient, vertexaiClient, bedrockClient, dialCoreClient);
         return new CompatRouter(
                 Map.of(
-                        "/compat/openai", openai,
-                        "/compat/vertexai", vertexai,
-                        "/compat/bedrock", bedrock),
+                        "/compat/openai",
+                        openai,
+                        "/compat/vertexai",
+                        vertexai,
+                        "/compat/bedrock",
+                        bedrock,
+                        TRANSLATOR_PREFIX,
+                        translatorMount(dialCoreClient, config)),
                 () -> close(vertx, clients, dial, aws));
+    }
+
+    /** DIAL Core's translator contract: Core calls {@code <base URL>/anthropic/v1/messages}, and is called back. */
+    public static final String TRANSLATOR_PREFIX = "/openaiResponses";
+
+    /**
+     * The Messages API for a model that DIAL Core serves through its Responses API, as a service of DIAL Core.
+     *
+     * @param dialCoreClient what calls DIAL Core back
+     */
+    public static TranslatorMount translatorMount(UpstreamClient dialCoreClient, Config config) {
+        return new TranslatorMount(MessagesOverResponses.overDialCore(dialCoreClient, config.dialUrl()));
     }
 
     /**

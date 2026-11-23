@@ -2,6 +2,7 @@ package com.epam.aidial.provider.translation;
 
 import com.epam.aidial.provider.ModelProviders;
 import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
 import com.epam.aidial.provider.credentials.AwsCredentials;
@@ -11,13 +12,16 @@ import com.epam.aidial.provider.testing.http.CasesServer;
 import com.epam.aidial.provider.testing.http.HttpTestRunner;
 import com.epam.aidial.provider.testing.http.SupportedRoutes;
 import com.epam.aidial.provider.testing.http.SupportedRoutes.Runner;
+import com.epam.aidial.provider.upstream.Limits;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -27,8 +31,10 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 
 /**
- * Runs the cases of the suite {@code translate}: the Anthropic Messages API served for a Responses API upstream, as
- * the openai mount wires it ({@link ModelProviders#openaiMount}).
+ * Runs the cases of the suite {@code translate}: the Anthropic Messages API served for a Responses API upstream, in
+ * the two ways the service wires it: on the openai mount ({@link ModelProviders#openaiMount}, the cases of
+ * {@code translate/adapter}), and as a service of DIAL Core ({@code /openaiResponses}, {@link
+ * ModelProviders#translatorMount}, those of {@code translate/service}, which call DIAL Core back).
  *
  * <p>The stubs: {@code now_seconds}, the clock (the cache expiry); {@code azure_ad_token}, the Azure AD token every
  * call gets (without it, getting one fails with {@code azure_ad_error}, or "no Azure AD in these cases");
@@ -73,7 +79,12 @@ class MessagesToResponsesCasesTest {
                 "scope");
         AwsCredentials aws = new AwsCredentials(
                 vertx, config, () -> StaticCredentialsProvider.create(AwsBasicCredentials.create(keyId, "s")));
-        return ModelProviders.openaiMount(
+        UpstreamClient dialCore = server.own(
+                new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofSeconds(30))),
+                UpstreamClient::close);
+        ModelProvider service = new CompatRouter(
+                Map.of(ModelProviders.TRANSLATOR_PREFIX, ModelProviders.translatorMount(dialCore, config)));
+        ModelProvider openai = ModelProviders.openaiMount(
                 vertx,
                 config,
                 "/compat/openai",
@@ -83,5 +94,8 @@ class MessagesToResponsesCasesTest {
                 aws,
                 dial,
                 Clock.fixed(Instant.ofEpochSecond(now), ZoneOffset.UTC));
+        return request -> request.path().startsWith(ModelProviders.TRANSLATOR_PREFIX + "/")
+                ? service.handle(request)
+                : openai.handle(request);
     }
 }

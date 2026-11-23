@@ -1,0 +1,90 @@
+# A function call and the citations of a web search in the answer.
+---
+name: {{ (mode ~ ": " ~ "function call is a tool_use, and the stop reason says so") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - {type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{"a":1}', status: completed}
+expect:
+  json:
+    content: !replace [{type: tool_use, id: c1, name: f, input: {a: 1}}]
+    stop_reason: tool_use
+---
+name: {{ (mode ~ ": " ~ "text and function call keep their order") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - {type: message, id: m1, role: assistant, status: completed, content: [{type: output_text, text: Calling, annotations: []}]}
+      - {type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{}', status: completed}
+expect: {json: {content: !replace [{type: text, text: Calling}, {type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
+---
+name: {{ (mode ~ ": " ~ "function call arguments that are no JSON are an empty input") | tojson }}
+mocks: [{response: {json: {output: !replace [{type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{"a":', status: completed}]}}}]
+expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
+---
+name: {{ (mode ~ ": " ~ "function call arguments that are no object are an empty input") | tojson }}
+mocks: [{response: {json: {output: !replace [{type: function_call, id: fc_1, call_id: c1, name: f, arguments: '[1]', status: completed}]}}}]
+expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
+---
+name: {{ (mode ~ ": " ~ "function call without arguments is an empty input") | tojson }}
+mocks: [{response: {json: {output: !replace [{type: function_call, id: fc_1, call_id: c1, name: f, arguments: '', status: completed}]}}}]
+expect: {json: {content: !replace [{type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
+---
+name: {{ (mode ~ ": " ~ "url citation is a web search pair after the citing text") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - type: message
+        id: m1
+        role: assistant
+        status: completed
+        content:
+        - type: output_text
+          text: See it
+          annotations: [{type: url_citation, url: 'https://a.com', title: A, start_index: 0, end_index: 2}]
+expect:
+  json:
+    content: !replace
+    - {type: text, text: See it}
+    - {type: server_tool_use, id: {$regex: '^srvtoolu_[0-9a-f]{32}$'}, name: web_search, input: {query: ''}}
+    - type: web_search_tool_result
+      tool_use_id: {$regex: '^srvtoolu_[0-9a-f]{32}$'}
+      content: [{type: web_search_result, url: 'https://a.com', title: A, encrypted_content: ''}]
+---
+name: {{ (mode ~ ": " ~ "each cited URL is a result once, in the answer") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - type: message
+        id: m1
+        role: assistant
+        status: completed
+        content:
+        - type: output_text
+          text: One
+          annotations: [{type: url_citation, url: 'https://a.com', title: A, start_index: 0, end_index: 1}, {type: url_citation, url: 'https://a.com', title: A, start_index: 1, end_index: 2}]
+        - type: output_text
+          text: Two
+          annotations: [{type: url_citation, url: 'https://a.com', title: A, start_index: 0, end_index: 1}]
+expect:
+  json:
+    content: !replace
+    - {type: text, text: One}
+    - {type: server_tool_use, id: {$type: string}, name: web_search, input: {query: ''}}
+    - {type: web_search_tool_result, tool_use_id: {$type: string}, content: [{type: web_search_result, url: 'https://a.com', title: A, encrypted_content: ''}]}
+    - {type: text, text: Two}
+---
+name: {{ (mode ~ ": " ~ "a citation that is no URL citation is nothing") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - type: message
+        id: m1
+        role: assistant
+        status: completed
+        content: [{type: output_text, text: Hello, annotations: [{type: file_citation, file_id: f, filename: x, index: 0}]}]

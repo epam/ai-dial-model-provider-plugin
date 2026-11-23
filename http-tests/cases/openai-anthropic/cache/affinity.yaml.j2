@@ -1,12 +1,19 @@
 # The DIAL cache affinity headers (X-Dial-Cache-Breakpoint-Path, X-Dial-Cache-Expire-At = now + TTL, now being 1000)
 # the service adds to a 200 of /v1/messages: the breakpoint is the last block with an ephemeral marker (or, with a
-# top-level cache_control object, the last block), the TTL the longest `ttl` of the markers (300 s by default).
+# top-level cache_control object, the last block) in the order of the prompt (tools, system, messages) whatever the order
+# of the body's members, the TTL the longest `ttl` of the markers (300 s by default).
 {% set E = '{"type":"ephemeral"}' %}
 {# title, body members after "model", breakpoint path (none: no headers), expiry #}
 {% set scenarios = [
   ["marker on a message block", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '}]}]', "prefix.body.messages[0].content[0]", 1300],
   ["last marker wins", '"system":[{"type":"text","text":"s","cache_control":' ~ E ~ '}],"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '},{"type":"text","text":"b"}]}]', "prefix.body.messages[0].content[0]", 1300],
   ["marker on the system prompt", '"system":[{"type":"text","text":"s","cache_control":' ~ E ~ '}],"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}]', "prefix.body.system[0]", 1300],
+  ["markers on system and tool, body order system, messages, tools", '"system":[{"type":"text","text":"s","cache_control":' ~ E ~ '}],"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}],"tools":[{"name":"get","cache_control":' ~ E ~ '}]', "prefix.body.system[0]", 1300],
+  ["markers on system and tool, body order tools, system, messages", '"tools":[{"name":"get","cache_control":' ~ E ~ '}],"system":[{"type":"text","text":"s","cache_control":' ~ E ~ '}],"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}]', "prefix.body.system[0]", 1300],
+  ["markers on message and system, body order messages, system", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '}]}],"system":[{"type":"text","text":"s","cache_control":' ~ E ~ '}]', "prefix.body.messages[0].content[0]", 1300],
+  ["markers on message and tool, body order messages, tools", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '}]}],"tools":[{"name":"get","cache_control":' ~ E ~ '}]', "prefix.body.messages[0].content[0]", 1300],
+  ["longest ttl whatever the body order", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":' ~ E ~ '}]}],"tools":[{"name":"get","cache_control":{"type":"ephemeral","ttl":"1h"}}]', "prefix.body.messages[0].content[0]", 4600],
+  ["automatic caching takes the last block of the prompt whatever the body order", '"cache_control":' ~ E ~ ',"messages":[{"role":"user","content":"m"}],"system":"s"', "prefix.body.messages[0].content[0]", 1300],
   ["marker on a tool", '"tools":[{"name":"get","cache_control":' ~ E ~ '}],"messages":[]', "prefix.body.tools[0]", 1300],
   ["ttl in hours", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral","ttl":"1h"}}]}]', "prefix.body.messages[0].content[0]", 4600],
   ["ttl in minutes", '"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral","ttl":"5m"}}]}]', "prefix.body.messages[0].content[0]", 1300],

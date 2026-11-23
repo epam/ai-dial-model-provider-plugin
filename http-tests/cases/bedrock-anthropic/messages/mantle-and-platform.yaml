@@ -75,3 +75,14 @@ mocks:
     path: /platform/v1/messages/count_tokens
     headers: {x-api-key: k, authorization: {$absent: true}}
     body: '{"model":"anthropic.claude-x","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+---
+name: mantle cache breakpoint follows the prompt order, not the body order
+request:
+  headers: {X-Upstream-Extra-Data: '{"claude_client":"mantle"}'}
+  body: '{"model":"anthropic.claude-x","system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}],"tools":[{"name":"get","cache_control":{"type":"ephemeral"}}]}'
+mocks:
+- request:
+    path: /mantle/v1/messages
+    body: '{"model":"anthropic.claude-x","system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":[{"type":"text","text":"a"}]}],"tools":[{"name":"get","cache_control":{"type":"ephemeral"}}]}'
+expect:
+  headers: {x-dial-cache-breakpoint-path: 'prefix.body.system[0]', x-dial-cache-expire-at: '1300'}

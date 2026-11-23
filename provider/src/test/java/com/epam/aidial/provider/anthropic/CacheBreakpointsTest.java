@@ -75,11 +75,38 @@ class CacheBreakpointsTest {
                         "prefix.body.messages[1].content[1]",
                         300));
         cases.put(
-                "body order, not prompt order",
+                "prompt order, not body order (automatic)",
                 new Case(
                         """
                                 {"cache_control":{"type":"ephemeral"},"messages":[{"content":"m"}],"system":"s"}""",
+                        "prefix.body.messages[0].content[0]",
+                        300));
+        cases.put(
+                "prompt order, not body order (system before tools)",
+                new Case(
+                        "{\"system\":[{\"text\":\"s\"," + cc
+                                + "}],\"messages\":[{\"content\":[{\"text\":\"a\"}]}],\"tools\":[{" + cc + "}]}",
                         "prefix.body.system[0]",
+                        300));
+        cases.put(
+                "prompt order, not body order (messages before system)",
+                new Case(
+                        "{\"messages\":[{\"content\":[{\"text\":\"a\"," + cc + "}]}],\"system\":[{\"text\":\"s\"," + cc
+                                + "}]}",
+                        "prefix.body.messages[0].content[0]",
+                        300));
+        cases.put(
+                "prompt order, not body order (messages before tools)",
+                new Case(
+                        "{\"messages\":[{\"content\":[{\"text\":\"a\"," + cc + "}]}],\"tools\":[{" + cc + "}]}",
+                        "prefix.body.messages[0].content[0]",
+                        300));
+        cases.put(
+                "automatic, last block of the prompt whatever the body order",
+                new Case(
+                        """
+                                {"messages":[{"content":[{"text":"a"}]}],"cache_control":{"type":"ephemeral"},"tools":[{"name":"t"}],"system":[{"text":"s"}]}""",
+                        "prefix.body.messages[0].content[0]",
                         300));
         cases.put(
                 "object system is not a marker",

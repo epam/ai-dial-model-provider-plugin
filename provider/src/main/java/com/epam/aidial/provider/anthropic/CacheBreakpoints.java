@@ -8,15 +8,21 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
-/** The candidates are collected in the one {@link BodyFields#parse} pass, so the prompt is not parsed again. */
+/**
+ * The candidates are collected in the one {@link BodyFields#parse} pass, so the prompt is not parsed again. They arrive
+ * in the order of the body's members, which says nothing about the prompt: {@link #breakpoint} puts them in the order
+ * of the prompt, tools, system and messages.
+ */
 final class CacheBreakpoints implements BodyFields.MemberScanner {
 
     private static final int DEFAULT_TTL_SECONDS = 5 * 60; // Claude's default cache TTL
 
+    /** In the order of the prompt, not of the request body: {@link #breakpoint} goes by the declaration order. */
     enum Section {
         TOOLS,
         SYSTEM,
@@ -61,6 +67,8 @@ final class CacheBreakpoints implements BodyFields.MemberScanner {
         if (fields.isNull("messages")) {
             return null;
         }
+        // Stable: a section keeps the order of its blocks, and the messages that of the conversation.
+        candidates.sort(Comparator.comparing(Candidate::section));
         Candidate last = null;
         int ttl = 0;
         for (Candidate c : candidates) {

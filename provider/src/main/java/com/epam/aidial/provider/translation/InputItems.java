@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The {@code input} items of the Responses API that the messages of a Messages API request become. A turn's blocks keep
@@ -23,6 +25,7 @@ import java.util.stream.Collectors;
  */
 final class InputItems {
 
+    private static final Logger log = LoggerFactory.getLogger(InputItems.class);
     private static final String MID_CONV_SYSTEM = "mid_conv_system";
 
     private final ContentParts parts;
@@ -131,6 +134,11 @@ final class InputItems {
                 block.asCompaction().content().filter(text -> !text.isEmpty()).ifPresent(texts::add);
             } else if (block.isToolUse()) {
                 item = functionCall(block.asToolUse());
+            } else if (block.isThinking()) {
+                item = reasoning(
+                        block.asThinking().signature(), block.asThinking().thinking());
+            } else if (block.isRedactedThinking()) {
+                item = reasoning(block.asRedactedThinking().data(), "");
             } else if (isMidConvSystem(block)) {
                 system.addAll(midConvSystem(block));
             } else {
@@ -146,6 +154,31 @@ final class InputItems {
         List<Map<String, Object>> turn = new ArrayList<>(system);
         turn.addAll(items);
         return turn;
+    }
+
+    /**
+     * The reasoning item that a thinking block of an earlier answer of this translator carries; none for any other
+     * block, a Claude one included: the signature is not a reasoning item the Responses API can use.
+     */
+    private static Map<String, Object> reasoning(String signature, String text) {
+        ReasoningWrapper wrapper = ReasoningWrapper.decode(signature).orElse(null);
+        if (wrapper == null) {
+            log.debug("Dropping a thinking block: its signature isn't a reasoning item of the Responses API");
+            return null;
+        }
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("type", "reasoning");
+        item.put("id", wrapper.id());
+        item.put("encrypted_content", wrapper.encryptedContent());
+        item.put("summary", text.isEmpty() ? List.of() : List.of(summaryText(text)));
+        return item;
+    }
+
+    private static Map<String, Object> summaryText(String text) {
+        Map<String, Object> part = new LinkedHashMap<>();
+        part.put("type", "summary_text");
+        part.put("text", text);
+        return part;
     }
 
     private static void flush(List<String> texts, List<Map<String, Object>> items) {

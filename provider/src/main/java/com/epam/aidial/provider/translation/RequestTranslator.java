@@ -51,6 +51,7 @@ final class RequestTranslator {
             tools.toolChoice(choice, sentTools).ifPresent(c -> body.put("tool_choice", c));
             Tools.parallelToolCalls(choice).ifPresent(parallel -> body.put("parallel_tool_calls", parallel));
         });
+        Reasoning.of(request).ifPresent(reasoning -> body.put("reasoning", reasoning));
         textConfig(request, dropped).ifPresent(text -> body.put("text", text));
         // The Messages API keeps no state between the requests
         body.put("store", false);

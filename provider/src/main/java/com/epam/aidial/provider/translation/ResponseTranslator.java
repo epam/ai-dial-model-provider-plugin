@@ -6,13 +6,16 @@ import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseOutputText;
+import com.openai.models.responses.ResponseReasoningItem;
 import com.openai.models.responses.ResponseUsage;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +42,9 @@ final class ResponseTranslator {
         boolean hasToolCall = false;
         Set<String> seenUrls = new HashSet<>();
         for (ResponseOutputItem item : response.output()) {
-            if (item.message().isPresent()) {
+            if (item.reasoning().isPresent()) {
+                thinkingBlock(item.reasoning().get()).ifPresent(content::add);
+            } else if (item.message().isPresent()) {
                 messageBlocks(item.message().get(), seenUrls, content);
             } else if (item.functionCall().isPresent()) {
                 hasToolCall = true;
@@ -60,6 +65,34 @@ final class ResponseTranslator {
         message.put("stop_reason", hasToolCall ? "tool_use" : "end_turn");
         message.put("usage", usage(response));
         return message;
+    }
+
+    /**
+     * The reasoning as a thinking block: its texts (summary, then content) joined by a blank line, and the encrypted
+     * content as the signature, the wrapper that lets the next turn replay it. Without text, the encrypted content is a
+     * redacted block; without either, nothing.
+     */
+    private static Optional<Map<String, Object>> thinkingBlock(ResponseReasoningItem item) {
+        List<String> texts = new ArrayList<>();
+        item.summary().forEach(part -> texts.add(part.text()));
+        item.content().ifPresent(parts -> parts.forEach(part -> texts.add(part.text())));
+        String text = texts.stream().filter(t -> !t.isEmpty()).collect(Collectors.joining("\n\n"));
+        String signature = item.encryptedContent()
+                .filter(encrypted -> !encrypted.isEmpty())
+                .map(encrypted -> new ReasoningWrapper(item.id(), encrypted).encode())
+                .orElse("");
+        Map<String, Object> block = new LinkedHashMap<>();
+        if (!text.isEmpty()) {
+            block.put("type", "thinking");
+            block.put("thinking", text);
+            block.put("signature", signature);
+        } else if (!signature.isEmpty()) {
+            block.put("type", "redacted_thinking");
+            block.put("data", signature);
+        } else {
+            return Optional.empty();
+        }
+        return Optional.of(block);
     }
 
     private static void messageBlocks(

@@ -11,7 +11,7 @@ name: output texts are text blocks, in order
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: output_text, text: One, annotations: []}, {type: output_text, text: Two, annotations: []}]}
 expect: {json: {content: [{type: text, text: One}, {type: text, text: Two}]}}
 ---
@@ -23,7 +23,7 @@ name: an output item the translator does not know is dropped
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - {type: future_item, id: f1}
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: output_text, text: Hello, annotations: []}]}
 ---
@@ -31,7 +31,7 @@ name: a content part the translator does not know is dropped
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: future_part, a: 1}, {type: output_text, text: Hello, annotations: []}]}
 ---
 name: usage is the tokens of the response
@@ -46,6 +46,6 @@ name: refusal is a text block
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: refusal, refusal: I cannot}]}
 expect: {json: {content: [{type: text, text: I cannot}]}}

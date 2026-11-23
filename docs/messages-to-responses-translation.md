@@ -85,6 +85,87 @@ that is not a letter, a digit, `_` or `-` as `_` (a `t_` before it when it does 
 55 characters, `_` and the first 8 hex digits of the name's SHA-256: `get weather` is `get_weather_dce3870e`. It lives
 for one request.
 
+### Thinking
+
+| Messages API | Responses API |
+| --- | --- |
+| `thinking` of type `disabled` | `reasoning.effort: none`, whatever effort is asked |
+| the effort of the last visible `system` turn (`output_config.effort`), else `output_config.effort` | `reasoning.effort`, if it is an effort the Responses API has (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); any other (`ultra`) is a `400`: "Cannot convert Anthropic Messages API reasoning effort ultra to an OpenAI reasoning effort" |
+| `thinking` of another type (`enabled`, `adaptive`), unless its `display` is `omitted` or the effort is `none` | `reasoning.summary: auto`: unlike Anthropic, the Responses API returns no reasoning text unless asked for a summary. `budget_tokens` has no equivalent and is ignored |
+| neither | no `reasoning` at all: the deployment's default stays |
+
+A system turn that was cleared (`clear_at`) does not count.
+
+The answer's reasoning item is a `thinking` block: its summary and content texts joined by a blank line, and its
+encrypted content as the `signature` (see below). With a text but no encrypted content the `signature` is empty; with
+encrypted content but no text it is a `redacted_thinking` block whose `data` is the signature; with neither it is
+nothing.
+
+**The signature.** The Responses API keeps no state here (`store: false`), so the model can only think on from its earlier
+reasoning if the client gives it back, encrypted. The translator puts the encrypted reasoning item in the `signature` of
+the `thinking` block (or the `data` of the `redacted_thinking` block) as JSON:
+
+```json
+{"dial_translator_reasoning_wrapper":{"version":2,"id":"rs_1","encrypted_content":"gAAAA..."}}
+```
+
+A client that sends the block back unchanged in the next turn gets it turned into a `reasoning` item, with the thinking
+text as its summary, in front of the items that follow it.
+
+#### Thinking blocks that are dropped
+
+**A `thinking` or `redacted_thinking` block whose signature is not a wrapper like the one above is dropped from the
+request, its text with it.** Nothing says so to the client or in the log above the debug level. The model does not
+get to see that reasoning, and no error says it was lost. It is the translator's behaviour on purpose, and it can be
+surprising:
+
+- *The signature is another provider's.* A conversation that was answered by Claude, then by a model behind this
+  translator, has `thinking` blocks signed by Anthropic (`"signature": "EqQBCkYIAxgCIkD..."`). A signature is only
+  worth something to the provider that made it, and the Responses API takes no reasoning that its own model did not
+  encrypt. The blocks are dropped.
+- *The signature is gone.* A client that rewrites or summarizes its history may keep a `thinking` block's text and
+  lose its `signature` (`""`), or change it. The block is dropped. A `redacted_thinking` block has only a signature,
+  so it is dropped whole.
+- *The wrapper is of another version.* Only `"version": 2` is replayed.
+
+An example. The request:
+
+```json
+{"messages": [
+  {"role": "user", "content": "hi"},
+  {"role": "assistant", "content": [
+    {"type": "thinking", "thinking": "Claude thought this", "signature": "EqQBCkYIAxgCIkD"},
+    {"type": "thinking", "thinking": "Our own", "signature": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"rs_1\",\"encrypted_content\":\"ENC\"}}"},
+    {"type": "redacted_thinking", "data": "EqQBCkYIAxgCIkD"},
+    {"type": "text", "text": "Hello"}
+  ]}
+]}
+```
+
+is sent to the Responses API with the text and **only the block that this translator signed**:
+
+```json
+{"input": [
+  {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+  {"type": "reasoning", "id": "rs_1", "encrypted_content": "ENC", "summary": [{"type": "summary_text", "text": "Our own"}]},
+  {"type": "message", "role": "assistant", "content": "Hello"}
+]}
+```
+
+"Claude thought this" and the redacted block are not in it. Without the block that was signed here, the same request
+sends the assistant text alone:
+
+```json
+{"input": [
+  {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+  {"type": "message", "role": "assistant", "content": "Hello"}
+]}
+```
+
+What to do about it: to keep a model's reasoning across turns, send its `thinking` and `redacted_thinking` blocks back
+exactly as they came, `signature` and `data` included. Reasoning cannot be carried from one provider's model to
+another's.
+
 Always sent: `store: false` and `include: ["reasoning.encrypted_content"]`. Not sent, with one warning in the log:
 `top_k`, `stop_sequences`, `compaction`, `mcp_servers`, `container`, `inference_geo`, `context_management`.
 `cache_control` is ignored.

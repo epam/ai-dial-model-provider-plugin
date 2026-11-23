@@ -4,7 +4,7 @@ name: function call is a tool_use, and the stop reason says so
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - {type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{"a":1}', status: completed}
 expect:
   json:
@@ -15,7 +15,7 @@ name: text and function call keep their order
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - {type: message, id: m1, role: assistant, status: completed, content: [{type: output_text, text: Calling, annotations: []}]}
       - {type: function_call, id: fc_1, call_id: c1, name: f, arguments: '{}', status: completed}
 expect: {json: {content: !replace [{type: text, text: Calling}, {type: tool_use, id: c1, name: f, input: {}}], stop_reason: tool_use}}
@@ -36,7 +36,7 @@ name: url citation is a web search pair after the citing text
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - type: message
         id: m1
         role: assistant
@@ -58,7 +58,7 @@ name: each cited URL is a result once, in the answer
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - type: message
         id: m1
         role: assistant
@@ -82,7 +82,7 @@ name: a citation that is no URL citation is nothing
 mocks:
 - response:
     json:
-      output:
+      output: !replace
       - type: message
         id: m1
         role: assistant

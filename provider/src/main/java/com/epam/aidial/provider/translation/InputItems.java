@@ -26,10 +26,12 @@ final class InputItems {
     private static final String MID_CONV_SYSTEM = "mid_conv_system";
 
     private final ContentParts parts;
+    private final ToolNames names;
     private final Dropped dropped;
 
-    InputItems(ContentParts parts, Dropped dropped) {
+    InputItems(ContentParts parts, ToolNames names, Dropped dropped) {
         this.parts = parts;
+        this.names = names;
         this.dropped = dropped;
     }
 
@@ -153,11 +155,11 @@ final class InputItems {
         }
     }
 
-    private static Map<String, Object> functionCall(BetaToolUseBlockParam block) {
+    private Map<String, Object> functionCall(BetaToolUseBlockParam block) {
         Map<String, Object> call = new LinkedHashMap<>();
         call.put("type", "function_call");
         call.put("call_id", block.id());
-        call.put("name", block.name());
+        call.put("name", names.toUpstream(block.name()));
         call.put("arguments", block._input().isMissing() ? "{}" : AnthropicJson.write(block.input()));
         return call;
     }

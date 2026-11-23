@@ -65,6 +65,26 @@ Files API aren't supported.".
 
 Everything dropped is named in one warning in the log.
 
+### Tools
+
+| Messages API | Responses API |
+| --- | --- |
+| a custom tool (type `custom`, or none) | a `function` tool: `name`, `description` (if not empty), `parameters` the `input_schema` less its root `$schema` (OpenAI rejects it; `{"type":"object","properties":{}}` without a schema), `strict` (always sent, `false` unless the tool says so) |
+| a `web_search_*` tool | the built-in `web_search`, with `filters.allowed_domains` (if not empty) and an `approximate` `user_location` (the fields not given are `null`). `blocked_domains` is dropped, with a warning: **the search is not restricted** |
+| `max_uses` of a web search | `max_tool_calls`, when it is the only web search; dropped, with a warning, when there are several |
+| any other tool | forwarded as sent, for the deployment to accept or refuse |
+| `tool_choice` `auto`, `any`, `none` | `auto`, `required`, `none` |
+| `tool_choice` `tool` | `{"type":"function","name"}`; for the web search tool `{"type":"allowed_tools","mode":"required","tools":[{"type":"web_search"}]}` |
+| `tool_choice` of another type | not sent |
+| `disable_parallel_tool_use` in `tool_choice` | `parallel_tool_calls` (its opposite); not sent when `tool_choice` does not say |
+| `output_config.format` of type `json_schema` with a schema | `text.format`: `{"type":"json_schema","name":"response","schema","strict":true}`; any other format is dropped, with a warning |
+
+**Tool names.** A name that is not `^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$` is replaced by an alias, in `tools`, in `tool_choice`
+and in the replayed `tool_use` blocks, and the answer says the name again. The alias is the name with each character
+that is not a letter, a digit, `_` or `-` as `_` (a `t_` before it when it does not start with a letter or `_`), cut to
+55 characters, `_` and the first 8 hex digits of the name's SHA-256: `get weather` is `get_weather_dce3870e`. It lives
+for one request.
+
 Always sent: `store: false` and `include: ["reasoning.encrypted_content"]`. Not sent, with one warning in the log:
 `top_k`, `stop_sequences`, `compaction`, `mcp_servers`, `container`, `inference_geo`, `context_management`.
 `cache_control` is ignored.
@@ -79,6 +99,10 @@ The message is sparse: `id`, `type`, `role`, `model`, `content`, `stop_reason`, 
 - `model` is the deployment's name, `X-DIAL-DEPLOYMENT-ID`, whatever model the request names. DIAL Core always sends
   the header; without it the request is a `500`.
 - `content` is a `text` block per output text, and per refusal (its text); an answer with none is one empty `text` block.
+- A `function_call` is a `tool_use` (its `arguments` as the `input`: `{}` when they are no JSON object) and makes the
+  `stop_reason` `tool_use`; the tool's own name comes back (see above).
+- A URL cited by an output text, the first time it is cited in the answer, is a `web_search_result` of a `web_search_tool_result`,
+  which follows the text, with the `server_tool_use` it answers (`input.query` is empty: the search is not known).
 - `usage` is `input_tokens` and `output_tokens`; zeros without a `usage`.
 - An output item or content part this page does not list is dropped, with a warning in the log.
 

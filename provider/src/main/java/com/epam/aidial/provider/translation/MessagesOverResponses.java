@@ -54,6 +54,7 @@ public final class MessagesOverResponses implements ModelProvider {
             // count_tokens: the Responses API has nothing to count with
             return Future.succeededFuture(AnthropicErrors.error(404, "not_found_error", "Endpoint not supported"));
         }
+        ToolNames names = new ToolNames();
         Map<String, Object> translated;
         try {
             MessageCreateParams.Body body = AnthropicJson.parseRequest(Buffers.array(request.body()));
@@ -62,7 +63,7 @@ public final class MessagesOverResponses implements ModelProvider {
                 return Future.succeededFuture(
                         AnthropicErrors.error(501, "api_error", "Streaming is not supported yet"));
             }
-            translated = RequestTranslator.translate(body, stream);
+            translated = RequestTranslator.translate(body, stream, names);
         } catch (InvalidRequestException e) {
             return Future.succeededFuture(invalidRequest(e.getMessage()));
         } catch (AnthropicInvalidDataException e) {
@@ -76,7 +77,7 @@ public final class MessagesOverResponses implements ModelProvider {
         }
         AdapterRequest call = upstreamRequest(request, Json.encode(translated));
         return Answers.call(upstream::create, call)
-                .map(answer -> answer(answer, deployment))
+                .map(answer -> answer(answer, deployment, names))
                 .recover(e -> request.aborted().isComplete() ? Future.failedFuture(e) : failed(e));
     }
 
@@ -85,7 +86,7 @@ public final class MessagesOverResponses implements ModelProvider {
         return Future.succeededFuture(internalError());
     }
 
-    private AdapterResponse answer(AdapterResponse answer, String deployment) {
+    private AdapterResponse answer(AdapterResponse answer, String deployment, ToolNames names) {
         try {
             byte[] body = bytes(answer);
             if (answer.status() >= 400) {
@@ -93,7 +94,7 @@ public final class MessagesOverResponses implements ModelProvider {
             }
             Response response = ResponsesJson.parseResponse(body);
             AdapterResponse message =
-                    AdapterResponse.json(200, Json.encode(ResponseTranslator.message(response, deployment)));
+                    AdapterResponse.json(200, Json.encode(ResponseTranslator.message(response, deployment, names)));
             copyHeaders(answer.headers(), message.headers());
             return message;
         } catch (ResponseTranslator.ResponseFailedException e) {

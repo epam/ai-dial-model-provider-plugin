@@ -1,6 +1,8 @@
 package com.epam.aidial.provider.translation;
 
+import com.anthropic.models.beta.messages.BetaJsonOutputFormat;
 import com.anthropic.models.beta.messages.BetaTextBlockParam;
+import com.anthropic.models.beta.messages.BetaToolUnion;
 import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import java.util.ArrayList;
@@ -30,15 +32,26 @@ final class RequestTranslator {
      * @throws InvalidRequestException when the request cannot be translated
      * @throws com.anthropic.errors.AnthropicInvalidDataException when a field it reads is missing or mistyped
      */
-    static Map<String, Object> translate(MessageCreateParams.Body request, boolean stream) {
+    static Map<String, Object> translate(MessageCreateParams.Body request, boolean stream, ToolNames names) {
         Map<String, Object> body = new LinkedHashMap<>();
         AnthropicJson.model(request).ifPresent(model -> body.put("model", model));
         Dropped dropped = new Dropped();
-        body.put("input", new InputItems(new ContentParts(dropped), dropped).of(request.messages()));
+        body.put("input", new InputItems(new ContentParts(dropped), names, dropped).of(request.messages()));
         String instructions = instructions(request);
         if (!instructions.isEmpty()) {
             body.put("instructions", instructions);
         }
+        Tools tools = new Tools(names, dropped);
+        List<BetaToolUnion> sentTools = request.tools().orElse(List.of());
+        if (!sentTools.isEmpty()) {
+            body.put("tools", tools.translate(sentTools));
+        }
+        tools.maxToolCalls(sentTools).ifPresent(max -> body.put("max_tool_calls", max));
+        request.toolChoice().ifPresent(choice -> {
+            tools.toolChoice(choice, sentTools).ifPresent(c -> body.put("tool_choice", c));
+            Tools.parallelToolCalls(choice).ifPresent(parallel -> body.put("parallel_tool_calls", parallel));
+        });
+        textConfig(request, dropped).ifPresent(text -> body.put("text", text));
         // The Messages API keeps no state between the requests
         body.put("store", false);
         // Replays the reasoning of the previous turns without stored state
@@ -54,6 +67,32 @@ final class RequestTranslator {
         droppedParameters(request, dropped);
         dropped.warn(log);
         return body;
+    }
+
+    /** The structured output: a JSON schema, which is all the Responses API takes of {@code output_config.format}. */
+    private static Optional<Map<String, Object>> textConfig(MessageCreateParams.Body request, Dropped dropped) {
+        BetaJsonOutputFormat format =
+                request.outputConfig().flatMap(config -> config.format()).orElse(null);
+        if (format == null) {
+            return Optional.empty();
+        }
+        String type = AnthropicJson.string(format._type()).orElse("(none)");
+        if (!type.equals("json_schema")) {
+            dropped.add("output_config.format type " + type);
+            return Optional.empty();
+        }
+        Map<String, Object> schema =
+                format._schema().isMissing() ? Map.of() : AnthropicJson.toMap(AnthropicJson.rawModel(format.schema()));
+        if (schema.isEmpty()) {
+            dropped.add("output_config.format without a schema");
+            return Optional.empty();
+        }
+        Map<String, Object> json = new LinkedHashMap<>();
+        json.put("type", "json_schema");
+        json.put("name", "response");
+        json.put("schema", schema);
+        json.put("strict", true);
+        return Optional.of(Map.of("format", json));
     }
 
     private static long outputTokens(long maxTokens) {

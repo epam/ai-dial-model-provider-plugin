@@ -10,6 +10,7 @@ import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.Model;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -126,6 +127,21 @@ public final class AnthropicJson {
     /** What a JSON value is, as the SDK reads it: the helpers keep the types its raw accessors lose. */
     public static Optional<String> string(JsonValue value) {
         return field(value).asString();
+    }
+
+    public static Optional<Boolean> bool(JsonValue value) {
+        return field(value).asBoolean();
+    }
+
+    /** A model of the SDK as the JSON value it is written as, to read it as sent. */
+    public static JsonValue rawModel(Object model) {
+        return MAPPER.convertValue(model, JsonValue.class);
+    }
+
+    /** A JSON value as plain maps, lists and scalars, in the order it was sent. */
+    public static Map<String, Object> toMap(JsonValue value) {
+        Map<String, Object> map = value.convert(new TypeReference<Map<String, Object>>() {});
+        return map == null ? Map.of() : map;
     }
 
     public static Optional<List<JsonValue>> array(JsonValue value) {

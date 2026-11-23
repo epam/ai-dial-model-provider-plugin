@@ -1,14 +1,18 @@
 package com.epam.aidial.provider.translation;
 
+import com.epam.aidial.provider.json.Json;
 import com.openai.models.responses.Response;
+import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseOutputText;
 import com.openai.models.responses.ResponseUsage;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,26 +31,21 @@ final class ResponseTranslator {
      * @throws ResponseFailedException when the response is a failed one
      * @throws com.openai.errors.OpenAIInvalidDataException when a field it reads is missing or mistyped
      */
-    static Map<String, Object> message(Response response, String model) {
+    static Map<String, Object> message(Response response, String model, ToolNames names) {
         if (response.status().map(status -> status.asString().equals("failed")).orElse(false)) {
             throw failure(response);
         }
         List<Map<String, Object>> content = new ArrayList<>();
+        boolean hasToolCall = false;
+        Set<String> seenUrls = new HashSet<>();
         for (ResponseOutputItem item : response.output()) {
-            ResponseOutputMessage message = item.message().orElse(null);
-            if (message == null) {
+            if (item.message().isPresent()) {
+                messageBlocks(item.message().get(), seenUrls, content);
+            } else if (item.functionCall().isPresent()) {
+                hasToolCall = true;
+                content.add(toolUse(item.functionCall().get(), names));
+            } else {
                 log.warn("Dropping an unsupported Responses API output item");
-                continue;
-            }
-            for (ResponseOutputMessage.Content part : message.content()) {
-                ResponseOutputText text = part.outputText().orElse(null);
-                if (text != null) {
-                    content.add(textBlock(text.text()));
-                } else if (part.refusal().isPresent()) {
-                    content.add(textBlock(part.refusal().get().refusal()));
-                } else {
-                    log.warn("Dropping an unsupported Responses API content part");
-                }
             }
         }
         if (content.isEmpty()) {
@@ -58,9 +57,63 @@ final class ResponseTranslator {
         message.put("role", "assistant");
         message.put("model", model);
         message.put("content", content);
-        message.put("stop_reason", "end_turn");
+        message.put("stop_reason", hasToolCall ? "tool_use" : "end_turn");
         message.put("usage", usage(response));
         return message;
+    }
+
+    private static void messageBlocks(
+            ResponseOutputMessage message, Set<String> seenUrls, List<Map<String, Object>> content) {
+        for (ResponseOutputMessage.Content part : message.content()) {
+            ResponseOutputText text = part.outputText().orElse(null);
+            if (text != null) {
+                content.add(textBlock(text.text()));
+                content.addAll(WebSearchBlocks.of(newCitations(text, seenUrls)));
+            } else if (part.refusal().isPresent()) {
+                content.add(textBlock(part.refusal().get().refusal()));
+            } else {
+                log.warn("Dropping an unsupported Responses API content part");
+            }
+        }
+    }
+
+    /** The URL citations of a text that no text before it cited: (url, title). */
+    private static List<WebSearchBlocks.Citation> newCitations(ResponseOutputText text, Set<String> seenUrls) {
+        List<WebSearchBlocks.Citation> citations = new ArrayList<>();
+        for (ResponseOutputText.Annotation annotation : text.annotations()) {
+            annotation.urlCitation().ifPresent(citation -> {
+                if (seenUrls.add(citation.url())) {
+                    citations.add(new WebSearchBlocks.Citation(citation.url(), citation.title()));
+                }
+            });
+        }
+        return citations;
+    }
+
+    private static Map<String, Object> toolUse(ResponseFunctionToolCall call, ToolNames names) {
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("type", "tool_use");
+        block.put("id", call.callId());
+        block.put("name", names.toClient(call.name()));
+        block.put("input", arguments(call.arguments()));
+        return block;
+    }
+
+    /** The arguments as an object; {@code {}} for what is none. */
+    private static Map<String, Object> arguments(String arguments) {
+        if (!arguments.isEmpty()) {
+            try {
+                if (Json.parse(arguments) instanceof Map<?, ?> object) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> typed = (Map<String, Object>) object;
+                    return typed;
+                }
+            } catch (Json.ParseException e) {
+                // reported below
+            }
+            log.warn("Failed to parse function_call arguments as a JSON object");
+        }
+        return new LinkedHashMap<>();
     }
 
     private static ResponseFailedException failure(Response response) {

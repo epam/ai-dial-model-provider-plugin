@@ -9,10 +9,12 @@ import com.epam.aidial.provider.core.Routes;
 import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
 import com.epam.aidial.provider.credentials.AzureTokens;
+import com.epam.aidial.provider.credentials.GoogleTokenSource;
 import com.epam.aidial.provider.credentials.GoogleTokens;
 import com.epam.aidial.provider.credentials.SessionTags;
 import com.epam.aidial.provider.openai.ResponsesRoutes;
 import com.epam.aidial.provider.translation.ApiDispatch;
+import com.epam.aidial.provider.translation.MessagesOverResponses;
 import com.epam.aidial.provider.upstream.Proxies;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import io.vertx.core.Future;
@@ -44,21 +46,7 @@ public final class ModelProviders {
         UpstreamClient vertexaiClient = new UpstreamClient(vertx, proxies, config.vertexai());
         UpstreamClient bedrockClient = new UpstreamClient(vertx, proxies, config.bedrock());
 
-        Routes openai = Routes.of(
-                new ApiDispatch(
-                        AnthropicRoutes.PATHS,
-                        new AnthropicRoutes("/compat/openai", Targets.openai(), openaiClient, azure, google, now),
-                        null),
-                new ResponsesRoutes(
-                        vertx,
-                        config,
-                        "/compat/openai",
-                        com.epam.aidial.provider.openai.Targets.openai(config),
-                        openaiClient,
-                        azure,
-                        aws,
-                        dial,
-                        now));
+        Routes openai = openaiMount(vertx, config, "/compat/openai", openaiClient, azure, google, aws, dial, now);
         Routes vertexai = Routes.of(
                 new AnthropicRoutes("/compat/vertexai", Targets.vertexai(config), vertexaiClient, azure, google, now));
         Routes bedrock = Routes.of(new AnthropicRoutes(
@@ -76,6 +64,40 @@ public final class ModelProviders {
                         "/compat/vertexai", vertexai,
                         "/compat/bedrock", bedrock),
                 () -> close(vertx, clients, dial, aws));
+    }
+
+    /**
+     * The openai mount: the Messages API routes, which also serve a Responses API upstream (translating), and the
+     * Responses API routes. Both call through {@code client}.
+     *
+     * @param dial null without DIAL_URL
+     */
+    public static Routes openaiMount(
+            Vertx vertx,
+            Config config,
+            String prefix,
+            UpstreamClient client,
+            AzureAd azure,
+            GoogleTokenSource google,
+            AwsCredentials aws,
+            @Nullable DialApi dial,
+            Clock now) {
+        ResponsesRoutes responses = new ResponsesRoutes(
+                vertx,
+                config,
+                prefix,
+                com.epam.aidial.provider.openai.Targets.openai(config),
+                client,
+                azure,
+                aws,
+                dial,
+                now);
+        return Routes.of(
+                new ApiDispatch(
+                        AnthropicRoutes.PATHS,
+                        new AnthropicRoutes(prefix, Targets.openai(), client, azure, google, now),
+                        new MessagesOverResponses(responses::create)),
+                responses);
     }
 
     /** The AWS clients are closed on a worker thread, as their close blocks. */

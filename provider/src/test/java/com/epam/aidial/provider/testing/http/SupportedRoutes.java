@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -21,6 +22,8 @@ public final class SupportedRoutes {
      * last accepts every case.
      */
     public enum Runner {
+        /** {@code MessagesToResponsesCasesTest}: the suite {@code translate}, whatever route it calls. */
+        TRANSLATE(c -> SupportedRoutes.suiteOf(c).filter("translate"::equals).isPresent()),
         /** {@code OpenAiResponsesCasesTest}: the cases to a Responses route. */
         RESPONSES(SupportedRoutes::isResponses),
         /**
@@ -70,13 +73,17 @@ public final class SupportedRoutes {
         return suites;
     }
 
-    private static String suite(HttpTestCase c) {
+    static String suite(HttpTestCase c) {
+        return suiteOf(c).orElseThrow(() -> new IllegalStateException("not below http-tests: " + c.file()));
+    }
+
+    private static Optional<String> suiteOf(HttpTestCase c) {
         Path file = c.file();
         for (int i = file.getNameCount() - 2; i >= 0; i--) {
             if (file.getName(i).toString().equals("http-tests")) {
-                return file.getName(i + 1).toString();
+                return Optional.of(file.getName(i + 1).toString());
             }
         }
-        throw new IllegalStateException("not below http-tests: " + file);
+        return Optional.empty();
     }
 }

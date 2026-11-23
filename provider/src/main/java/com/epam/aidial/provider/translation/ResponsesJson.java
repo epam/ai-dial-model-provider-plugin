@@ -3,8 +3,10 @@ package com.epam.aidial.provider.translation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.openai.core.JsonField;
 import com.openai.core.JsonValue;
 import com.openai.core.ObjectMappers;
+import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseStreamEvent;
@@ -32,6 +34,18 @@ public final class ResponsesJson {
      */
     public static ResponseStreamEvent parseEvent(byte[] json) {
         return read(json, ResponseStreamEvent.class);
+    }
+
+    /**
+     * A counter: 0 if absent or null.
+     *
+     * @throws OpenAIInvalidDataException if it is not a number
+     */
+    public static long count(JsonField<Long> field, String name) {
+        if (field.isMissing() || field.isNull()) {
+            return 0;
+        }
+        return field.asKnown().orElseThrow(() -> new OpenAIInvalidDataException(name + " is not a number"));
     }
 
     /** Data after the value is an error, as the mapper alone does not take it. */

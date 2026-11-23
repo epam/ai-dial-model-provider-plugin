@@ -1,0 +1,52 @@
+# What every case of this suite inherits (http-tests/README.md, bases): the Anthropic Messages API on the openai mount,
+# for a model whose upstream is a Responses API (its endpoint ends in /responses). The default
+# exchange is the plainest one: "hi" asked, "Hello" answered. A request case changes the Messages request and the
+# one member of the Responses request it must become; a response case changes the upstream's answer and the message
+# the client gets.
+server: {stubs: {now_seconds: 1000}}
+options: {json_member_order: any}
+request:
+  method: POST
+  path: /anthropic/v1/messages
+  headers:
+    Content-Type: application/json
+    X-Upstream-Endpoint: ${mocks.upstream.url}/v1/responses
+    X-Upstream-Key: k
+    X-DIAL-DEPLOYMENT-ID: gpt-5.5
+  json:
+    model: claude-x
+    max_tokens: 100
+    messages: [{role: user, content: hi}]
+mocks:
+- server: upstream
+  request:
+    method: POST
+    path: /v1/responses
+    headers: {authorization: Bearer k}
+    json:
+      model: claude-x
+      input: [{type: message, role: user, content: [{type: input_text, text: hi}]}]
+      store: false
+      include: [reasoning.encrypted_content]
+      stream: false
+      max_output_tokens: 100
+  response:
+    status: 200
+    json:
+      id: resp_1
+      object: response
+      status: completed
+      output:
+      - {type: message, id: msg_1, role: assistant, status: completed, content: [{type: output_text, text: Hello, annotations: []}]}
+      usage: {input_tokens: 10, output_tokens: 2, total_tokens: 12}
+expect:
+  status: 200
+  headers: {content-type: application/json}
+  json:
+    id: resp_1
+    type: message
+    role: assistant
+    model: gpt-5.5
+    content: [{type: text, text: Hello}]
+    stop_reason: end_turn
+    usage: {input_tokens: 10, output_tokens: 2}

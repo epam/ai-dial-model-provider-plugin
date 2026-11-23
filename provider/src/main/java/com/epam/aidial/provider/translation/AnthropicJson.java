@@ -7,6 +7,7 @@ import com.anthropic.models.beta.messages.BetaContentBlockParam;
 import com.anthropic.models.beta.messages.BetaToolUnion;
 import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.anthropic.models.messages.Message;
+import com.anthropic.models.messages.Model;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -52,6 +53,49 @@ public final class AnthropicJson {
             return false;
         }
         return field(stream).asBoolean().orElseThrow(() -> new InvalidRequestException("stream: must be a boolean"));
+    }
+
+    /**
+     * A number of the request the model has no field for (the sampling parameters {@code temperature} and {@code
+     * top_p} are not in it), as sent; empty if absent or null.
+     *
+     * @throws InvalidRequestException if it is not a number
+     */
+    public static Optional<Number> number(MessageCreateParams.Body request, String name) {
+        JsonValue value = request._additionalProperties().get(name);
+        if (value == null || value.isNull()) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                field(value).asNumber().orElseThrow(() -> new InvalidRequestException(name + ": must be a number")));
+    }
+
+    /**
+     * An optional field of a known type: empty if absent or null.
+     *
+     * @throws InvalidRequestException if it is of another type
+     */
+    public static <T> Optional<T> optional(JsonField<T> field, String name) {
+        if (field.isMissing() || field.isNull()) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                field.asKnown().orElseThrow(() -> new InvalidRequestException(name + ": has the wrong type")));
+    }
+
+    /**
+     * The model as sent, whatever it is called: empty if absent or null.
+     *
+     * @throws InvalidRequestException if it is not a string
+     */
+    public static Optional<String> model(MessageCreateParams.Body request) {
+        JsonField<Model> model = request._model();
+        if (model.isMissing() || model.isNull()) {
+            return Optional.empty();
+        }
+        return Optional.of(model.asKnown()
+                .flatMap(m -> m._value().asString())
+                .orElseThrow(() -> new InvalidRequestException("model: has the wrong type")));
     }
 
     /**

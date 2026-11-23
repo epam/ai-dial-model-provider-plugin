@@ -72,14 +72,6 @@ class ApiDispatchTest {
     }
 
     @Test
-    void withoutResponsesHandlerEveryRequestGoesToThePassthrough() throws Exception {
-        Routes routes = Routes.of(new ApiDispatch(PATHS, MESSAGES, null));
-        assertEquals(
-                "200 messages /anthropic/v1/messages",
-                send(routes, HttpMethod.POST, "/anthropic/v1/messages", "https://h/openai/v1/responses"));
-    }
-
-    @Test
     void otherPathsAndMethodsAreTheTablesAsBefore() throws Exception {
         Routes routes = Routes.of(new ApiDispatch(PATHS, MESSAGES, r -> answer("responses")));
         assertEquals("404 {\"detail\":\"Not Found\"}", send(routes, HttpMethod.POST, "/anthropic/v1/other", null));

@@ -1,0 +1,3 @@
+# An answer of the upstream that is not a Responses API response is a failure of the upstream, not of the client: a 500
+# whose detail is logged, never sent.
+expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: Internal server error}}}

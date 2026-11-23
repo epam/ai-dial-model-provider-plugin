@@ -3,12 +3,14 @@ package com.epam.aidial.provider.core;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.epam.aidial.provider.ModelProviders;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
+import com.epam.aidial.provider.api.ModelProvider;
 import com.epam.aidial.provider.testing.Await;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -29,7 +31,7 @@ import org.junit.jupiter.api.Test;
 class CompatRouterTest {
 
     private final List<AdapterRequest> openaiRequests = new ArrayList<>();
-    private final CompatRouter router = new CompatRouter(Map.of("openai", request -> {
+    private final CompatRouter router = new CompatRouter(Map.of("/compat/openai", request -> {
         openaiRequests.add(request);
         return Future.succeededFuture(AdapterResponse.json(200, "{\"adapter\":\"openai\"}"));
     }));
@@ -95,6 +97,35 @@ class CompatRouterTest {
             assertEquals("{\"detail\":\"Not Found\"}", body(response), path);
         }
         assertTrue(openaiRequests.isEmpty());
+    }
+
+    @Test
+    void eachMountIsServedBelowItsOwnPrefix() {
+        List<String> seen = new ArrayList<>();
+        CompatRouter two = new CompatRouter(Map.of(
+                "/compat/a", r -> record(seen, "a", r),
+                "/other", r -> record(seen, "other", r),
+                "/x/y/z", r -> record(seen, "xyz", r)));
+        for (String path : List.of("/compat/a/p", "/other/p/q", "/x/y/z/", "/compat/a2/p", "/x/y", "/otherwise")) {
+            await(two.handle(request(HttpMethod.GET, path, null)));
+        }
+        assertEquals(List.of("a /p", "other /p/q", "xyz /"), seen);
+    }
+
+    @Test
+    void mountPrefixesArePathsAndNeverNested() {
+        ModelProvider none = r -> Future.succeededFuture(AdapterResponse.json(200, "{}"));
+        for (String bad : List.of("", "/", "compat", "/compat/")) {
+            assertThrows(IllegalArgumentException.class, () -> new CompatRouter(Map.of(bad, none)), bad);
+        }
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new CompatRouter(Map.of("/compat", none, "/compat/openai", none)));
+    }
+
+    private static Future<AdapterResponse> record(List<String> seen, String mount, AdapterRequest request) {
+        seen.add(mount + " " + request.path());
+        return Future.succeededFuture(AdapterResponse.json(200, "{}"));
     }
 
     @Test

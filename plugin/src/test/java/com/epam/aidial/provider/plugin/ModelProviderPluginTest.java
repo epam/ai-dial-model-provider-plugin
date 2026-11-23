@@ -199,16 +199,17 @@ class ModelProviderPluginTest {
 
     @Test
     void bugIsTheStandaloneServersAnswer() throws Exception {
-        Plugin throwing = new ModelProviderPlugin(vertx, "/compat/openai", new CompatRouter(Map.of("openai", r -> {
-            throw new IllegalStateException("bug");
-        })));
+        Plugin throwing =
+                new ModelProviderPlugin(vertx, "/compat/openai", new CompatRouter(Map.of("/compat/openai", r -> {
+                    throw new IllegalStateException("bug");
+                })));
         Response thrown = answer(
                 throwing, request("/anthropic/v1/messages", MultiMap.caseInsensitiveMultiMap(), MESSAGES), new Host());
         assertEquals(500, thrown.statusCode());
         assertEquals("Internal Server Error", read(thrown));
 
         Plugin failing = new ModelProviderPlugin(
-                vertx, "/compat/openai", new CompatRouter(Map.of("openai", r -> Future.failedFuture("bug"))));
+                vertx, "/compat/openai", new CompatRouter(Map.of("/compat/openai", r -> Future.failedFuture("bug"))));
         Response failed = answer(
                 failing, request("/anthropic/v1/messages", MultiMap.caseInsensitiveMultiMap(), MESSAGES), new Host());
         assertEquals(500, failed.statusCode());

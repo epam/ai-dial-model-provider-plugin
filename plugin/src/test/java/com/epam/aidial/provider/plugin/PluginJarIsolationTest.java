@@ -1,9 +1,11 @@
 package com.epam.aidial.provider.plugin;
 
 import static com.epam.aidial.provider.testing.MockUpstream.await;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.epam.aidial.core.plugin.Call;
 import com.epam.aidial.core.plugin.HostDelegate;
@@ -33,13 +35,22 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The plugin jar as DIAL Core loads it: one class loader whose parent holds only what Core provides (the plugin API,
- * Vert.x, Netty, Jackson, SLF4J) and which sees nothing of this module's class path. Whatever else the plugin needs
- * must be in the jar; a missing class is a {@link NoClassDefFoundError} here, not at the first request in production.
+ * Vert.x, Netty, Jackson, OpenTelemetry, SLF4J) and which sees nothing of this module's class path. Whatever else the
+ * plugin needs must be in the jar; a missing class is a {@link NoClassDefFoundError} here, not at the first request in
+ * production.
  */
 class PluginJarIsolationTest {
 
-    private static final List<String> PROVIDED_BY_CORE =
-            List.of("io.vertx.", "io.netty.", "org.slf4j.", "com.fasterxml.jackson.", "com.epam.aidial.core.plugin.");
+    /** What plugin/build.gradle leaves out of the jar; of Jackson, not the SDKs' extra modules, which the jar has. */
+    private static final List<String> PROVIDED_BY_CORE = List.of(
+            "io.vertx.",
+            "io.netty.",
+            "io.opentelemetry.",
+            "org.slf4j.",
+            "com.fasterxml.jackson.core.",
+            "com.fasterxml.jackson.databind.",
+            "com.fasterxml.jackson.annotation.",
+            "com.epam.aidial.core.plugin.");
 
     private Vertx vertx;
     private MockUpstream mock;
@@ -127,6 +138,44 @@ class PluginJarIsolationTest {
         } finally {
             plugin.close();
         }
+    }
+
+    /**
+     * The SDKs the translator uses read and write both APIs, with the Kotlin, JDK 8 and JSR-310 modules of their JSON
+     * mapper from the jar (Core's Jackson has none of them). Through reflection: these are the jar's classes, not this
+     * module's.
+     */
+    @Test
+    void theSdksParseAndWriteBothApis() throws Exception {
+        Class<?> anthropic = isolated.loadClass("com.epam.aidial.provider.translation.AnthropicJson");
+        Object body = anthropic
+                .getMethod("parseRequest", byte[].class)
+                .invoke(null, "{\"model\":\"m\",\"max_tokens\":4,\"stream\":true,\"messages\":[]}".getBytes(UTF_8));
+        Class<?> bodyType = isolated.loadClass("com.anthropic.models.beta.messages.MessageCreateParams$Body");
+        assertEquals(true, anthropic.getMethod("stream", bodyType).invoke(null, body));
+        Object message = anthropic
+                .getMethod("message", String.class)
+                .invoke(
+                        null,
+                        "{\"id\":\"m1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\","
+                                + "\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}");
+        String written = (String) anthropic.getMethod("write", Object.class).invoke(null, message);
+        assertTrue(written.contains("\"text\":\"Hello\""), written);
+
+        Class<?> responses = isolated.loadClass("com.epam.aidial.provider.translation.ResponsesJson");
+        Object response = responses
+                .getMethod("parseResponse", byte[].class)
+                .invoke(null, "{\"id\":\"resp_1\",\"status\":\"completed\",\"output\":[]}".getBytes(UTF_8));
+        assertEquals("resp_1", response.getClass().getMethod("id").invoke(response));
+        Object builder = isolated.loadClass("com.openai.models.responses.ResponseCreateParams")
+                .getMethod("builder")
+                .invoke(null);
+        builder.getClass().getMethod("model", String.class).invoke(builder, "gpt-5.5");
+        builder.getClass().getMethod("input", String.class).invoke(builder, "hi");
+        String request = (String) responses
+                .getMethod("requestJson", builder.getClass(), boolean.class)
+                .invoke(null, builder, true);
+        assertTrue(request.contains("\"stream\":true") && request.contains("\"model\":\"gpt-5.5\""), request);
     }
 
     /** The whole body, read on a Vert.x context, as DIAL Core reads it. */

@@ -1,5 +1,6 @@
 package com.epam.aidial.provider.testing.http;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,6 +31,12 @@ class SupportedRoutesTest {
                 assertTrue(SupportedRoutes.isResponses(testCase(base + suffix)), base + suffix);
             }
         }
+    }
+
+    @Test
+    void theFirstRunnerThatAcceptsRunsTheCase() throws Exception {
+        assertEquals(SupportedRoutes.Runner.RESPONSES, SupportedRoutes.runnerOf(testCase("/openai/v1/responses")));
+        assertEquals(SupportedRoutes.Runner.ANTHROPIC, SupportedRoutes.runnerOf(testCase("/anthropic/v1/messages")));
     }
 
     @Test

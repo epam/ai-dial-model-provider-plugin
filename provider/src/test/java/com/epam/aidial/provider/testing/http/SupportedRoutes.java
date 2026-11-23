@@ -6,14 +6,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
- * Sorts the compiled cases by the API their request is to: a case to a Responses route is {@code
- * OpenAiResponsesCasesTest}'s, any other, such as the {@code 404} of a route the service does not serve, is the
- * Anthropic class's.
+ * Sorts the compiled cases among the classes that run them, by the API their request is to: see {@link Runner}. A new
+ * class that runs a kind of cases is a new {@code Runner} constant.
  */
 public final class SupportedRoutes {
+
+    /**
+     * The classes that run cases, in the order their predicates are tried: the first that accepts a case runs it. The
+     * last accepts every case.
+     */
+    public enum Runner {
+        /** {@code OpenAiResponsesCasesTest}: the cases to a Responses route. */
+        RESPONSES(SupportedRoutes::isResponses),
+        /**
+         * {@code AnthropicCasesTest}: any other case, such as the {@code 404} of a route the service does not serve.
+         */
+        ANTHROPIC(c -> true);
+
+        private final Predicate<HttpTestCase> accepts;
+
+        Runner(Predicate<HttpTestCase> accepts) {
+            this.accepts = accepts;
+        }
+    }
 
     private static final Pattern RESPONSES = Pattern.compile("^(?:"
             + String.join(
@@ -28,7 +48,21 @@ public final class SupportedRoutes {
                 .matches();
     }
 
-    public static Map<String, List<HttpTestCase>> suites(List<HttpTestCase> cases) {
+    public static Runner runnerOf(HttpTestCase testCase) {
+        return Stream.of(Runner.values())
+                .filter(r -> r.accepts.test(testCase))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    /** The cases of every suite on the classpath that {@code runner} runs, by the suite's name. */
+    public static Map<String, List<HttpTestCase>> suites(Runner runner) {
+        return suites(HttpTestCase.load("http-tests").stream()
+                .filter(c -> runnerOf(c) == runner)
+                .toList());
+    }
+
+    static Map<String, List<HttpTestCase>> suites(List<HttpTestCase> cases) {
         Map<String, List<HttpTestCase>> suites = new TreeMap<>();
         for (HttpTestCase c : cases) {
             suites.computeIfAbsent(suite(c), k -> new ArrayList<>()).add(c);

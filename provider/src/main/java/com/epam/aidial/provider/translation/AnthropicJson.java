@@ -1,12 +1,12 @@
 package com.epam.aidial.provider.translation;
 
 import com.anthropic.core.JsonField;
+import com.anthropic.core.JsonMissing;
 import com.anthropic.core.JsonValue;
 import com.anthropic.core.ObjectMappers;
 import com.anthropic.models.beta.messages.BetaContentBlockParam;
 import com.anthropic.models.beta.messages.BetaToolUnion;
 import com.anthropic.models.beta.messages.MessageCreateParams;
-import com.anthropic.models.messages.Model;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -17,29 +17,16 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
-/**
- * The Anthropic SDK's models behind one small door: its own mapper, and the few places where typed access is not
- * faithful to the API (plan §2.8). Each helper below reads the SDK's {@link JsonValue}, never a {@code Map} of Jackson
- * nodes.
- *
- * <p>Parsing is lazy: a body that parses may still fail in a getter, with an {@code AnthropicInvalidDataException},
- * which is what a translator that reads the field maps to a 400. A field never read is never checked.
- */
 public final class AnthropicJson {
 
     private static final JsonMapper MAPPER = ObjectMappers.jsonMapper();
-    /** Data after the value is an error, as the mapper alone does not take it. */
     private static final ObjectReader REQUEST =
             MAPPER.readerFor(MessageCreateParams.Body.class).with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     private AnthropicJson() {}
 
-    /**
-     * The Messages request as the SDK's (beta) model, which has every block the API has.
-     *
-     * @throws InvalidRequestException if the body is not JSON or not a JSON object
-     */
     public static MessageCreateParams.Body parseRequest(byte[] json) {
         try {
             return REQUEST.readValue(json);
@@ -50,11 +37,8 @@ public final class AnthropicJson {
 
     /** {@code stream} is not a field of the model: it is one of its additional properties. */
     public static boolean stream(MessageCreateParams.Body request) {
-        JsonValue stream = request._additionalProperties().get("stream");
-        if (stream == null || stream.isNull()) {
-            return false;
-        }
-        return field(stream).asBoolean().orElseThrow(() -> new InvalidRequestException("stream: must be a boolean"));
+        return optional(additional(request, "stream"), JsonField::asBoolean, "stream: must be a boolean")
+                .orElse(false);
     }
 
     /**
@@ -64,12 +48,7 @@ public final class AnthropicJson {
      * @throws InvalidRequestException if it is not a number
      */
     public static Optional<Number> number(MessageCreateParams.Body request, String name) {
-        JsonValue value = request._additionalProperties().get(name);
-        if (value == null || value.isNull()) {
-            return Optional.empty();
-        }
-        return Optional.of(
-                field(value).asNumber().orElseThrow(() -> new InvalidRequestException(name + ": must be a number")));
+        return optional(additional(request, name), JsonField::asNumber, name + ": must be a number");
     }
 
     /**
@@ -78,11 +57,7 @@ public final class AnthropicJson {
      * @throws InvalidRequestException if it is of another type
      */
     public static <T> Optional<T> optional(JsonField<T> field, String name) {
-        if (field.isMissing() || field.isNull()) {
-            return Optional.empty();
-        }
-        return Optional.of(
-                field.asKnown().orElseThrow(() -> new InvalidRequestException(name + ": has the wrong type")));
+        return optional(field, JsonField::asKnown, name + ": has the wrong type");
     }
 
     /**
@@ -91,13 +66,24 @@ public final class AnthropicJson {
      * @throws InvalidRequestException if it is not a string
      */
     public static Optional<String> model(MessageCreateParams.Body request) {
-        JsonField<Model> model = request._model();
-        if (model.isMissing() || model.isNull()) {
+        return optional(
+                request._model(),
+                model -> model.asKnown().flatMap(m -> m._value().asString()),
+                "model: has the wrong type");
+    }
+
+    /** The value of a field, read by {@code read}: empty if absent or null, an error if {@code read} cannot. */
+    private static <F, T> Optional<T> optional(
+            JsonField<F> field, Function<JsonField<F>, Optional<T>> read, String error) {
+        if (field.isMissing() || field.isNull()) {
             return Optional.empty();
         }
-        return Optional.of(model.asKnown()
-                .flatMap(m -> m._value().asString())
-                .orElseThrow(() -> new InvalidRequestException("model: has the wrong type")));
+        return Optional.of(read.apply(field).orElseThrow(() -> new InvalidRequestException(error)));
+    }
+
+    /** A property of the request the model has no field for: missing if the request has none. */
+    private static JsonField<?> additional(MessageCreateParams.Body request, String name) {
+        return field(request._additionalProperties().getOrDefault(name, JsonMissing.of()));
     }
 
     /**

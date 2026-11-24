@@ -60,6 +60,15 @@ public final class AnthropicJson {
         return optional(field, JsonField::asKnown, name + ": has the wrong type");
     }
 
+    /** The value of a field, read by {@code read}: empty if absent or null, an error if {@code read} cannot. */
+    private static <F, T> Optional<T> optional(
+            JsonField<F> field, Function<JsonField<F>, Optional<T>> read, String error) {
+        if (field.isMissing() || field.isNull()) {
+            return Optional.empty();
+        }
+        return Optional.of(read.apply(field).orElseThrow(() -> new InvalidRequestException(error)));
+    }
+
     /**
      * The model as sent, whatever it is called: empty if absent or null.
      *
@@ -70,15 +79,6 @@ public final class AnthropicJson {
                 request._model(),
                 model -> model.asKnown().flatMap(m -> m._value().asString()),
                 "model: has the wrong type");
-    }
-
-    /** The value of a field, read by {@code read}: empty if absent or null, an error if {@code read} cannot. */
-    private static <F, T> Optional<T> optional(
-            JsonField<F> field, Function<JsonField<F>, Optional<T>> read, String error) {
-        if (field.isMissing() || field.isNull()) {
-            return Optional.empty();
-        }
-        return Optional.of(read.apply(field).orElseThrow(() -> new InvalidRequestException(error)));
     }
 
     /** A property of the request the model has no field for: missing if the request has none. */
@@ -97,6 +97,16 @@ public final class AnthropicJson {
     /** The string a constant of the model holds, such as the {@code media_type} of a PDF. */
     public static Optional<String> string(JsonValue value) {
         return field(value).asString();
+    }
+
+    /** A JSON object given as text; empty if it is not one. */
+    public static Optional<JsonValue> object(String json) {
+        try {
+            JsonValue value = MAPPER.readValue(json, JsonValue.class);
+            return field(value).asObject().isPresent() ? Optional.of(value) : Optional.empty();
+        } catch (JsonProcessingException e) {
+            return Optional.empty();
+        }
     }
 
     /** A model of the SDK as plain maps, lists and scalars, in the order and spelling the API uses. */

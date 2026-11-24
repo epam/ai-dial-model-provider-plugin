@@ -6,9 +6,7 @@ import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.ReasoningEffort;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /** The {@code reasoning} of the Responses request: how much to think, and whether to say what was thought. */
@@ -17,16 +15,19 @@ final class Reasoning {
     private Reasoning() {}
 
     /** Empty when the request says nothing of thinking. */
-    static Optional<Map<String, Object>> of(MessageCreateParams.Body request) {
+    static Optional<com.openai.models.Reasoning> of(MessageCreateParams.Body request) {
         Optional<BetaThinkingConfigParam> thinking = request.thinking();
-        Optional<String> effort = effort(request, thinking);
-        Map<String, Object> reasoning = new LinkedHashMap<>();
-        effort.ifPresent(e -> reasoning.put("effort", e));
+        Optional<ReasoningEffort> effort = effort(request, thinking);
+        com.openai.models.Reasoning.Builder reasoning = com.openai.models.Reasoning.builder();
+        effort.ifPresent(reasoning::effort);
         // Unlike Anthropic, the Responses API returns no reasoning text unless asked for a summary
-        if (thinking.isPresent() && !effort.equals(Optional.of("none")) && !displayOmitted(thinking.get())) {
-            reasoning.put("summary", "auto");
+        boolean summary = thinking.isPresent()
+                && !effort.equals(Optional.of(ReasoningEffort.NONE))
+                && !displayOmitted(thinking.get());
+        if (summary) {
+            reasoning.summary(com.openai.models.Reasoning.Summary.AUTO);
         }
-        return reasoning.isEmpty() ? Optional.empty() : Optional.of(reasoning);
+        return effort.isPresent() || summary ? Optional.of(reasoning.build()) : Optional.empty();
     }
 
     /**
@@ -36,25 +37,21 @@ final class Reasoning {
      *
      * @throws InvalidRequestException for an effort the Responses API has no word for
      */
-    private static Optional<String> effort(
+    private static Optional<ReasoningEffort> effort(
             MessageCreateParams.Body request, Optional<BetaThinkingConfigParam> thinking) {
         if (thinking.filter(BetaThinkingConfigParam::isDisabled).isPresent()) {
-            return Optional.of("none");
+            return Optional.of(ReasoningEffort.NONE);
         }
         Optional<String> effort = systemTurnEffort(request).filter(e -> !e.isEmpty());
         if (effort.isEmpty()) {
             effort = AnthropicJson.effort(request).filter(e -> !e.isEmpty());
         }
-        if (effort.isPresent() && !known(effort.get())) {
-            throw new InvalidRequestException("Cannot convert Anthropic Messages API reasoning effort " + effort.get()
-                    + " to an OpenAI reasoning effort");
-        }
-        return effort;
+        return effort.map(Reasoning::openAiEffort);
     }
 
     private static Optional<String> systemTurnEffort(MessageCreateParams.Body request) {
         List<BetaMessageParam> systemTurns = InputItems.visible(request.messages()).stream()
-                .filter(message -> message.role().asString().equals("system"))
+                .filter(message -> message.role().value() == BetaMessageParam.Role.Value.SYSTEM)
                 .toList();
         if (systemTurns.isEmpty()) {
             return Optional.empty();
@@ -68,13 +65,15 @@ final class Reasoning {
     }
 
     /** The efforts the OpenAI SDK has constants for: the SDK follows the API. */
-    private static boolean known(String effort) {
+    private static ReasoningEffort openAiEffort(String effort) {
+        ReasoningEffort openAi = ReasoningEffort.of(effort);
         try {
-            ReasoningEffort.of(effort).known();
-            return true;
+            openAi.known();
         } catch (OpenAIInvalidDataException e) {
-            return false;
+            throw new InvalidRequestException("Cannot convert Anthropic Messages API reasoning effort " + effort
+                    + " to an OpenAI reasoning effort");
         }
+        return openAi;
     }
 
     private static boolean displayOmitted(BetaThinkingConfigParam thinking) {

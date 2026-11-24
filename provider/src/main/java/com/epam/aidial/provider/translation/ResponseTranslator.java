@@ -8,7 +8,6 @@ import com.anthropic.models.messages.OutputTokensDetails;
 import com.anthropic.models.messages.ServerToolUsage;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.Usage;
-import com.epam.aidial.provider.json.Json;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseFunctionWebSearch;
@@ -16,10 +15,10 @@ import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseOutputText;
 import com.openai.models.responses.ResponseReasoningItem;
+import com.openai.models.responses.ResponseStatus;
 import com.openai.models.responses.ResponseUsage;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,7 +48,9 @@ final class ResponseTranslator {
      * @throws com.openai.errors.OpenAIInvalidDataException when a field it reads is missing or mistyped
      */
     static Message message(Response response, String model, ToolNames names) {
-        if (response.status().map(status -> status.asString().equals("failed")).orElse(false)) {
+        if (response.status()
+                .map(status -> status.value() == ResponseStatus.Value.FAILED)
+                .orElse(false)) {
             throw failure(response);
         }
         List<ContentBlock> content = new ArrayList<>();
@@ -93,17 +94,19 @@ final class ResponseTranslator {
                 .stopSequence(Optional.empty());
     }
 
-    static Optional<String> incompleteReason(Response response) {
-        return response.incompleteDetails().flatMap(details -> details.reason()).map(reason -> reason.asString());
+    static Optional<Response.IncompleteDetails.Reason> incompleteReason(Response response) {
+        return response.incompleteDetails().flatMap(details -> details.reason());
     }
 
     /** What the answer was cut by, if it was; else what it holds: a tool call, a refusal, or neither. */
-    static StopReason stopReason(Optional<String> incompleteReason, boolean hasToolCall, boolean isRefusal) {
-        String reason = incompleteReason.orElse("");
-        if (reason.equals("max_output_tokens")) {
+    static StopReason stopReason(
+            Optional<Response.IncompleteDetails.Reason> incompleteReason, boolean hasToolCall, boolean isRefusal) {
+        Response.IncompleteDetails.Reason.Value reason =
+                incompleteReason.map(Response.IncompleteDetails.Reason::value).orElse(null);
+        if (reason == Response.IncompleteDetails.Reason.Value.MAX_OUTPUT_TOKENS) {
             return StopReason.MAX_TOKENS;
         }
-        if (reason.equals("content_filter")) {
+        if (reason == Response.IncompleteDetails.Reason.Value.CONTENT_FILTER) {
             return StopReason.REFUSAL;
         }
         if (hasToolCall) {
@@ -185,24 +188,19 @@ final class ResponseTranslator {
     }
 
     private static ContentBlock toolUse(ResponseFunctionToolCall call, ToolNames names) {
-        return Blocks.toolUse(call.callId(), names.toClient(call.name()), JsonValue.from(arguments(call.arguments())));
+        return Blocks.toolUse(call.callId(), names.toClient(call.name()), arguments(call.arguments()));
     }
 
     /** The arguments as an object; {@code {}} for what is none. */
-    private static Map<String, Object> arguments(String arguments) {
+    private static JsonValue arguments(String arguments) {
         if (!arguments.isEmpty()) {
-            try {
-                if (Json.parse(arguments) instanceof Map<?, ?> object) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> typed = (Map<String, Object>) object;
-                    return typed;
-                }
-            } catch (Json.ParseException e) {
-                // reported below
+            Optional<JsonValue> object = AnthropicJson.object(arguments);
+            if (object.isPresent()) {
+                return object.get();
             }
             log.warn("Failed to parse function_call arguments as a JSON object");
         }
-        return new LinkedHashMap<>();
+        return JsonValue.from(Map.of());
     }
 
     static ResponseFailedException failure(Response response) {

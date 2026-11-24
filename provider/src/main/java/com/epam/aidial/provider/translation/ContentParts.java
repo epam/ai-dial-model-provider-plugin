@@ -10,10 +10,12 @@ import com.anthropic.models.beta.messages.BetaSearchResultBlockParam;
 import com.anthropic.models.beta.messages.BetaTextBlockParam;
 import com.anthropic.models.beta.messages.BetaToolResultBlockParam;
 import com.epam.aidial.provider.api.InvalidRequestException;
+import com.openai.models.responses.ResponseInputContent;
+import com.openai.models.responses.ResponseInputFile;
+import com.openai.models.responses.ResponseInputImage;
+import com.openai.models.responses.ResponseInputText;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -29,15 +31,13 @@ final class ContentParts {
     }
 
     /** One {@code input_text} part. */
-    static Map<String, Object> text(String text) {
-        Map<String, Object> part = new LinkedHashMap<>();
-        part.put("type", "input_text");
-        part.put("text", text);
-        return part;
+    static ResponseInputContent text(String text) {
+        return ResponseInputContent.ofInputText(
+                ResponseInputText.builder().text(text).build());
     }
 
     /** The parts of a block of a user turn (or of a document's content): none, if it has none. */
-    List<Map<String, Object>> of(BetaContentBlockParam block) {
+    List<ResponseInputContent> of(BetaContentBlockParam block) {
         if (block.isText()) {
             return texts(block.asText().text());
         }
@@ -58,8 +58,8 @@ final class ContentParts {
     }
 
     /** The parts of what a tool answered: a string, or blocks, less the references to tools the API loads. */
-    List<Map<String, Object>> toolResult(BetaToolResultBlockParam.Content content) {
-        List<Map<String, Object>> parts = new ArrayList<>();
+    List<ResponseInputContent> toolResult(BetaToolResultBlockParam.Content content) {
+        List<ResponseInputContent> parts = new ArrayList<>();
         content.string().ifPresent(text -> parts.addAll(texts(text)));
         for (BetaToolResultBlockParam.Content.Block block : content.blocks().orElse(List.of())) {
             if (block.isText()) {
@@ -72,17 +72,18 @@ final class ContentParts {
                 parts.add(text(searchResult(block.asSearchResult())));
             } else if (!block.isToolReference()) {
                 // A reference names a tool for the Anthropic tool search to load: nothing to carry over
-                dropped.add("tool result content " + AnthropicJson.typeName(block.type()._value()));
+                dropped.add("tool result content "
+                        + AnthropicJson.typeName(block.type()._value()));
             }
         }
         return parts;
     }
 
-    private static List<Map<String, Object>> texts(String text) {
+    private static List<ResponseInputContent> texts(String text) {
         return text.isEmpty() ? List.of() : List.of(text(text));
     }
 
-    private Optional<Map<String, Object>> image(BetaImageBlockParam block) {
+    private Optional<ResponseInputContent> image(BetaImageBlockParam block) {
         BetaImageBlockParam.Source source = block.source();
         String url;
         if (source.isBase64()) {
@@ -98,31 +99,26 @@ final class ContentParts {
             dropped.add("image source " + AnthropicJson.typeName(source.type()._value()));
             return Optional.empty();
         }
-        Map<String, Object> part = new LinkedHashMap<>();
-        part.put("type", "input_image");
-        part.put("image_url", url);
-        part.put("detail", "auto");
-        return Optional.of(part);
+        return Optional.of(ResponseInputContent.ofInputImage(ResponseInputImage.builder()
+                .imageUrl(url)
+                .detail(ResponseInputImage.Detail.AUTO)
+                .build()));
     }
 
-    private List<Map<String, Object>> document(BetaRequestDocumentBlock block) {
+    private List<ResponseInputContent> document(BetaRequestDocumentBlock block) {
         BetaRequestDocumentBlock.Source source = block.source();
         if (source.isBase64()) {
-            Map<String, Object> part = new LinkedHashMap<>();
-            part.put("type", "input_file");
-            part.put("filename", block.title().filter(t -> !t.isEmpty()).orElse("document.pdf"));
             String mediaType =
                     AnthropicJson.string(source.asBase64()._mediaType()).orElse("application/pdf");
-            part.put(
-                    "file_data",
-                    "data:" + mediaType + ";base64," + source.asBase64().data());
-            return List.of(part);
+            return List.of(ResponseInputContent.ofInputFile(ResponseInputFile.builder()
+                    .filename(block.title().filter(t -> !t.isEmpty()).orElse("document.pdf"))
+                    .fileData(
+                            "data:" + mediaType + ";base64," + source.asBase64().data())
+                    .build()));
         }
         if (source.isUrl()) {
-            Map<String, Object> part = new LinkedHashMap<>();
-            part.put("type", "input_file");
-            part.put("file_url", source.asUrl().url());
-            return List.of(part);
+            return List.of(ResponseInputContent.ofInputFile(
+                    ResponseInputFile.builder().fileUrl(source.asUrl().url()).build()));
         }
         if (source.isText()) {
             return texts(source.asText().data());
@@ -137,8 +133,8 @@ final class ContentParts {
         return List.of();
     }
 
-    private List<Map<String, Object>> documentContent(BetaContentBlockSource.Content content) {
-        List<Map<String, Object>> parts = new ArrayList<>();
+    private List<ResponseInputContent> documentContent(BetaContentBlockSource.Content content) {
+        List<ResponseInputContent> parts = new ArrayList<>();
         content.string().ifPresent(text -> parts.addAll(texts(text)));
         for (BetaContentBlockSourceContent block :
                 content.betaContentBlockSource().orElse(List.of())) {
@@ -147,7 +143,8 @@ final class ContentParts {
             } else if (block.isImage()) {
                 image(block.asImage()).ifPresent(parts::add);
             } else {
-                dropped.add("document content block " + AnthropicJson.typeName(block.type()._value()));
+                dropped.add("document content block "
+                        + AnthropicJson.typeName(block.type()._value()));
             }
         }
         return parts;

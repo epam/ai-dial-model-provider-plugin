@@ -4,10 +4,10 @@ import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.json.Json;
+import com.openai.models.responses.ResponseCreateParams;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -26,18 +26,16 @@ final class CoreCallback {
 
     /** The translated body, with the deployment as the model. */
     static Buffer body(AdapterRequest request) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> translated = (Map<String, Object>) Json.parse(Buffers.array(request.body()));
-        Map<String, Object> body = new LinkedHashMap<>(translated);
+        ResponseCreateParams.Body translated = ResponsesJson.parseRequest(Buffers.array(request.body()));
         String deployment = request.headers().get(MessagesOverResponses.DEPLOYMENT_HEADER);
-        if (deployment != null) {
-            body.put("model", deployment);
-        }
-        return Buffer.buffer(Json.encode(body).getBytes(StandardCharsets.UTF_8));
+        ResponseCreateParams.Body body = deployment == null
+                ? translated
+                : translated.toBuilder().model(deployment).build();
+        return Buffer.buffer(ResponsesJson.write(body).getBytes(StandardCharsets.UTF_8));
     }
 
     static boolean streams(Buffer body) {
-        return Json.parse(Buffers.array(body)) instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get("stream"));
+        return ResponsesJson.streams(ResponsesJson.parseRequest(Buffers.array(body)));
     }
 
     static MultiMap headers(MultiMap request) {

@@ -103,10 +103,50 @@ public final class ResponsesJson {
      */
     public static String requestJson(ResponseCreateParams.Builder request, boolean stream) {
         request.putAdditionalBodyProperty("stream", JsonValue.from(stream));
+        return write(request.build()._body());
+    }
+
+    /**
+     * A request as it was written by {@link #requestJson}.
+     *
+     * @throws IllegalArgumentException if it is not a Responses request
+     */
+    public static ResponseCreateParams.Body parseRequest(byte[] json) {
         try {
-            return MAPPER.writeValueAsString(request.build()._body());
+            return MAPPER.readValue(json, ResponseCreateParams.Body.class);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("not a Responses request: " + describe(e), e);
+        }
+    }
+
+    /** Whether the request asks for a stream: {@code stream} is one of its additional properties. */
+    public static boolean streams(ResponseCreateParams.Body request) {
+        return JsonValue.from(true)
+                .equals(ResponseCreateParams.builder()
+                        .body(request)
+                        .build()
+                        ._additionalBodyProperties()
+                        .get("stream"));
+    }
+
+    /** A model of the SDK as JSON. */
+    public static String write(Object model) {
+        try {
+            return MAPPER.writeValueAsString(model);
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("cannot write the Responses request", e);
+            throw new IllegalStateException("cannot write " + model.getClass().getSimpleName(), e);
+        }
+    }
+
+    /**
+     * A model of the Anthropic SDK as the model of this SDK that says the same, where the two have the same JSON and
+     * only free-form members, such as a JSON schema, have no type of their own.
+     */
+    public static <T> T fromAnthropic(Object model, Class<T> type) {
+        try {
+            return MAPPER.readValue(AnthropicJson.write(model), type);
+        } catch (IOException e) {
+            throw new IllegalStateException("cannot read " + type.getSimpleName() + " from " + model, e);
         }
     }
 }

@@ -53,7 +53,11 @@ enum ToolKind {
         @Override
         public ToolKind visitBetaTool(BetaTool tool) {
             // The SDK takes a tool of a type it does not know for a custom one: it is one only if its type says so
-            return tool.type().map(type -> type.value() == BetaTool.Type.Value.CUSTOM).orElse(true) ? CUSTOM : OTHER;
+            return tool.type()
+                            .map(type -> type.value() == BetaTool.Type.Value.CUSTOM)
+                            .orElse(true)
+                    ? CUSTOM
+                    : OTHER;
         }
 
         @Override

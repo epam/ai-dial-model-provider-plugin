@@ -69,8 +69,7 @@ class AnthropicJsonTest {
                 List.of(ToolKind.CUSTOM, ToolKind.CUSTOM, ToolKind.WEB_SEARCH, ToolKind.OTHER, ToolKind.OTHER),
                 tools.stream().map(ToolKind::of).toList());
         assertTrue(tools.get(4).isBetaTool(), "the model itself takes the unknown tool for a custom one");
-        assertEquals(
-                java.util.Map.of("type", "brand_new_tool_2030", "name", "zzz"), AnthropicJson.toMap(tools.get(4)));
+        assertEquals(java.util.Map.of("type", "brand_new_tool_2030", "name", "zzz"), AnthropicJson.toMap(tools.get(4)));
     }
 
     @Test

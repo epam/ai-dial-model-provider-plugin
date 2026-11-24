@@ -72,7 +72,7 @@ public final class MessagesOverResponses implements ModelProvider {
         try {
             MessageCreateParams.Body body = AnthropicJson.parseRequest(Buffers.array(request.body()));
             boolean stream = AnthropicJson.stream(body);
-            translated = RequestTranslator.translate(body, stream, names);
+            translated = RequestTranslator.translate(body, names);
             streaming = stream;
         } catch (InvalidRequestException e) {
             return Future.succeededFuture(invalidRequest(e.getMessage()));
@@ -85,7 +85,8 @@ public final class MessagesOverResponses implements ModelProvider {
             log.error("The request has no {} header", DEPLOYMENT_HEADER);
             return Future.succeededFuture(internalError());
         }
-        AdapterRequest call = upstreamRequest(request, Json.encode(translated.body()), translated.cachePaths());
+        AdapterRequest call = upstreamRequest(
+                request, ResponsesJson.requestJson(translated.request(), streaming), translated.cachePaths());
         return Answers.call(upstream::create, call)
                 .map(answer -> streaming
                         ? stream(answer, deployment, names, translated.cachePaths())

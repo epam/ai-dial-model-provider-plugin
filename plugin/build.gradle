@@ -78,6 +78,12 @@ tasks.register('pluginJar', com.github.jengelman.gradle.plugins.shadow.tasks.Sha
     destinationDirectory = layout.buildDirectory.dir('plugins')
 }
 
+// The Shadow plugin's own shadowJar (part of assemble, so of build) would pack the same classes without pluginJar's
+// exclusions, and fails on the 65535 entries limit: pluginJar is the plugin's jar.
+tasks.named('shadowJar') {
+    enabled = false
+}
+
 // PluginJarIsolationTest loads the jar the way DIAL Core does, so the test needs the built jar.
 tasks.named('test') {
     dependsOn tasks.named('pluginJar')

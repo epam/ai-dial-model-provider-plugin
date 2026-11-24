@@ -1,7 +1,7 @@
 package com.epam.aidial.provider.translation;
 
-import com.anthropic.core.JsonValue;
 import com.anthropic.models.beta.messages.BetaMessageParam;
+import com.anthropic.models.beta.messages.BetaThinkingConfigParam;
 import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.openai.errors.OpenAIInvalidDataException;
@@ -18,12 +18,12 @@ final class Reasoning {
 
     /** Empty when the request says nothing of thinking. */
     static Optional<Map<String, Object>> of(MessageCreateParams.Body request) {
-        JsonValue thinking = request.thinking().flatMap(t -> t._json()).orElse(null);
+        Optional<BetaThinkingConfigParam> thinking = request.thinking();
         Optional<String> effort = effort(request, thinking);
         Map<String, Object> reasoning = new LinkedHashMap<>();
         effort.ifPresent(e -> reasoning.put("effort", e));
         // Unlike Anthropic, the Responses API returns no reasoning text unless asked for a summary
-        if (thinking != null && !effort.equals(Optional.of("none")) && !displayOmitted(thinking)) {
+        if (thinking.isPresent() && !effort.equals(Optional.of("none")) && !displayOmitted(thinking.get())) {
             reasoning.put("summary", "auto");
         }
         return reasoning.isEmpty() ? Optional.empty() : Optional.of(reasoning);
@@ -36,9 +36,9 @@ final class Reasoning {
      *
      * @throws InvalidRequestException for an effort the Responses API has no word for
      */
-    private static Optional<String> effort(MessageCreateParams.Body request, JsonValue thinking) {
-        if (thinking != null
-                && AnthropicJson.type(thinking).filter("disabled"::equals).isPresent()) {
+    private static Optional<String> effort(
+            MessageCreateParams.Body request, Optional<BetaThinkingConfigParam> thinking) {
+        if (thinking.filter(BetaThinkingConfigParam::isDisabled).isPresent()) {
             return Optional.of("none");
         }
         Optional<String> effort = systemTurnEffort(request).filter(e -> !e.isEmpty());
@@ -77,11 +77,13 @@ final class Reasoning {
         }
     }
 
-    private static boolean displayOmitted(JsonValue thinking) {
-        return AnthropicJson.object(thinking)
-                .map(object -> object.get("display"))
-                .flatMap(display -> AnthropicJson.string(display))
-                .filter("omitted"::equals)
-                .isPresent();
+    private static boolean displayOmitted(BetaThinkingConfigParam thinking) {
+        Optional<String> display =
+                switch (thinking.type().value()) {
+                    case ENABLED -> thinking.asEnabled().display().map(d -> d.asString());
+                    case ADAPTIVE -> thinking.asAdaptive().display().map(d -> d.asString());
+                    case DISABLED, BETWEEN_TOOLS, _UNKNOWN -> Optional.empty();
+                };
+        return display.filter("omitted"::equals).isPresent();
     }
 }

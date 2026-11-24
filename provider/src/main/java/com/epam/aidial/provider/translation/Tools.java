@@ -1,8 +1,9 @@
 package com.epam.aidial.provider.translation;
 
-import com.anthropic.core.JsonValue;
+import com.anthropic.models.beta.messages.BetaTool;
 import com.anthropic.models.beta.messages.BetaToolChoice;
 import com.anthropic.models.beta.messages.BetaToolUnion;
+import com.anthropic.models.beta.messages.BetaUserLocation;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,9 +11,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The tools of a Messages API request, its {@code tool_choice} and what depends on them. A tool is read as it was sent
- * (see {@link AnthropicJson#toolType}): a custom tool becomes a function tool, a web search the built-in one, any other
- * is forwarded as sent, for the deployment to refuse.
+ * The tools of a Messages API request, its {@code tool_choice} and what depends on them. A tool is read by its kind (see
+ * {@link ToolKind}): a custom tool becomes a function tool, a web search the built-in one, any other is forwarded as
+ * sent, for the deployment to refuse.
  */
 final class Tools {
 
@@ -29,103 +30,97 @@ final class Tools {
     List<Object> translate(List<BetaToolUnion> tools) {
         List<Object> translated = new ArrayList<>();
         for (BetaToolUnion tool : tools) {
-            String type = AnthropicJson.toolType(tool);
-            Map<String, Object> sent = AnthropicJson.toMap(AnthropicJson.raw(tool));
-            if (type.equals("custom")) {
-                translated.add(function(sent));
-            } else if (isWebSearch(type)) {
-                translated.add(webSearch(sent));
-            } else {
-                translated.add(sent);
-            }
+            translated.add(
+                    switch (ToolKind.of(tool)) {
+                        case CUSTOM -> function(tool.asBetaTool());
+                        case WEB_SEARCH -> webSearch(tool);
+                        case OTHER -> AnthropicJson.toMap(tool);
+                    });
         }
         return translated;
     }
 
-    private Map<String, Object> function(Map<String, Object> tool) {
+    private Map<String, Object> function(BetaTool tool) {
         Map<String, Object> function = new LinkedHashMap<>();
         function.put("type", "function");
-        function.put("name", names.toUpstream(string(tool, "name")));
-        function.put("parameters", parameters(tool.get("input_schema")));
-        function.put("strict", Boolean.TRUE.equals(tool.get("strict")));
-        if (tool.get("description") instanceof String description && !description.isEmpty()) {
-            function.put("description", description);
-        }
+        function.put("name", names.toUpstream(tool.name()));
+        function.put("parameters", parameters(tool));
+        function.put("strict", tool.strict().orElse(false));
+        tool.description().filter(description -> !description.isEmpty()).ifPresent(d -> function.put("description", d));
         return function;
     }
 
     /** {@code $schema} is valid JSON Schema, but OpenAI rejects function parameters that contain it. */
-    private static Map<String, Object> parameters(Object schema) {
+    private static Map<String, Object> parameters(BetaTool tool) {
         Map<String, Object> parameters = new LinkedHashMap<>();
-        if (schema instanceof Map<?, ?> map) {
-            map.forEach((key, value) -> {
-                if (!"$schema".equals(key)) {
-                    parameters.put((String) key, value);
-                }
-            });
+        if (tool._inputSchema().isMissing()) {
+            parameters.put("type", "object");
+            parameters.put("properties", new LinkedHashMap<>());
             return parameters;
         }
-        parameters.put("type", "object");
-        parameters.put("properties", new LinkedHashMap<>());
+        AnthropicJson.toMap(tool.inputSchema()).forEach((key, value) -> {
+            if (!"$schema".equals(key)) {
+                parameters.put(key, value);
+            }
+        });
         return parameters;
     }
 
-    private Map<String, Object> webSearch(Map<String, Object> tool) {
+    private Map<String, Object> webSearch(BetaToolUnion tool) {
         Map<String, Object> search = new LinkedHashMap<>();
         search.put("type", WEB_SEARCH);
-        if (tool.get("allowed_domains") instanceof List<?> domains && !domains.isEmpty()) {
-            search.put("filters", Map.of("allowed_domains", domains));
-        }
-        if (tool.get("user_location") instanceof Map<?, ?> location && !location.isEmpty()) {
-            Map<String, Object> approximate = new LinkedHashMap<>();
-            approximate.put("type", "approximate");
-            for (String key : List.of("city", "country", "region", "timezone")) {
-                approximate.put(key, location.get(key));
-            }
-            search.put("user_location", approximate);
-        }
-        if (tool.get("blocked_domains") instanceof List<?> blocked && !blocked.isEmpty()) {
+        tool.allowedDomains()
+                .filter(domains -> !domains.isEmpty())
+                .ifPresent(domains -> search.put("filters", Map.of("allowed_domains", domains)));
+        tool.userLocation().ifPresent(location -> search.put("user_location", approximate(location)));
+        if (tool.blockedDomains().filter(blocked -> !blocked.isEmpty()).isPresent()) {
             dropped.add("web_search blocked_domains: the search isn't restricted");
         }
         return search;
+    }
+
+    private static Map<String, Object> approximate(BetaUserLocation location) {
+        Map<String, Object> approximate = new LinkedHashMap<>();
+        approximate.put("type", "approximate");
+        approximate.put("city", location.city().orElse(null));
+        approximate.put("country", location.country().orElse(null));
+        approximate.put("region", location.region().orElse(null));
+        approximate.put("timezone", location.timezone().orElse(null));
+        return approximate;
     }
 
     /**
      * {@code max_tool_calls} caps the calls of all the built-in tools together, which is the cap of a web search when
      * it is the only built-in tool.
      */
-    Optional<Object> maxToolCalls(List<BetaToolUnion> tools) {
-        List<Map<String, Object>> searches = tools.stream()
-                .filter(tool -> isWebSearch(AnthropicJson.toolType(tool)))
-                .map(tool -> AnthropicJson.toMap(AnthropicJson.raw(tool)))
+    Optional<Long> maxToolCalls(List<BetaToolUnion> tools) {
+        List<BetaToolUnion> searches = tools.stream()
+                .filter(tool -> ToolKind.of(tool) == ToolKind.WEB_SEARCH)
                 .toList();
         if (searches.size() != 1) {
-            if (searches.stream().anyMatch(search -> search.get("max_uses") != null)) {
+            if (searches.stream().anyMatch(search -> search.maxUses().isPresent())) {
                 dropped.add("web_search max_uses: several web search tools can't share one max_tool_calls");
             }
             return Optional.empty();
         }
-        return Optional.ofNullable(searches.getFirst().get("max_uses"));
+        return searches.getFirst().maxUses();
     }
 
     /** {@code tool_choice} as the Responses API says it; empty for a type it has no word for. */
     Optional<Object> toolChoice(BetaToolChoice choice, List<BetaToolUnion> tools) {
-        Map<String, Object> sent = AnthropicJson.toMap(choice._json().orElseThrow());
-        String type = string(sent, "type");
-        return switch (type) {
-            case "auto" -> Optional.of("auto");
-            case "any" -> Optional.of("required");
-            case "none" -> Optional.of("none");
-            case "tool" -> Optional.of(namedTool(string(sent, "name"), tools));
-            default -> Optional.empty();
+        return switch (choice.type().value()) {
+            case AUTO -> Optional.of("auto");
+            case ANY -> Optional.of("required");
+            case NONE -> Optional.of("none");
+            case TOOL -> Optional.of(namedTool(choice.asTool().name(), tools));
+            case _UNKNOWN -> Optional.empty();
         };
     }
 
     private Object namedTool(String name, List<BetaToolUnion> tools) {
-        boolean webSearch = tools.stream().anyMatch(tool -> {
-            Map<String, Object> sent = AnthropicJson.toMap(AnthropicJson.raw(tool));
-            return isWebSearch(AnthropicJson.toolType(tool)) && name.equals(sent.get("name"));
-        });
+        boolean webSearch = tools.stream()
+                .anyMatch(tool -> ToolKind.of(tool) == ToolKind.WEB_SEARCH
+                        && tool.name().filter(name::equals).isPresent());
         Map<String, Object> choice = new LinkedHashMap<>();
         if (webSearch) {
             // The tool is sent as the built-in web search, which a choice cannot name
@@ -141,19 +136,6 @@ final class Tools {
 
     /** {@code parallel_tool_calls}, only when {@code tool_choice} says {@code disable_parallel_tool_use}. */
     static Optional<Boolean> parallelToolCalls(BetaToolChoice choice) {
-        JsonValue disable = AnthropicJson.object(choice._json().orElseThrow())
-                .map(o -> o.get("disable_parallel_tool_use"))
-                .orElse(null);
-        return disable == null
-                ? Optional.empty()
-                : Optional.of(!AnthropicJson.bool(disable).orElse(false));
-    }
-
-    private static boolean isWebSearch(String type) {
-        return type.startsWith("web_search_");
-    }
-
-    private static String string(Map<String, Object> object, String name) {
-        return object.get(name) instanceof String value ? value : "";
+        return choice.disableParallelToolUse().map(disable -> !disable);
     }
 }

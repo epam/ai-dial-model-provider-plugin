@@ -4,17 +4,17 @@ import com.anthropic.core.JsonField;
 import com.anthropic.core.JsonMissing;
 import com.anthropic.core.JsonValue;
 import com.anthropic.core.ObjectMappers;
-import com.anthropic.models.beta.messages.BetaContentBlockParam;
-import com.anthropic.models.beta.messages.BetaToolUnion;
+import com.anthropic.models.beta.messages.BetaSystemMessageParam;
 import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.epam.aidial.provider.api.InvalidRequestException;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -87,63 +87,35 @@ public final class AnthropicJson {
     }
 
     /**
-     * The tool's {@code type}, as sent. The model classifies a tool of a type it does not know as a custom tool; a
-     * custom tool may leave the type out, and is then {@code custom}.
+     * The name of a union's {@code type}, as sent: of a variant the SDK has no constant for too. A union's own {@code
+     * type()} reads it from the raw value; {@code (none)} if there is none.
      */
-    public static String toolType(BetaToolUnion tool) {
-        return type(raw(tool)).orElse("custom");
+    public static String typeName(JsonField<String> type) {
+        return type.asString().orElse("(none)");
     }
 
-    /** The tool as it was sent, to forward it unchanged. */
-    public static JsonValue raw(BetaToolUnion tool) {
-        return tool._json().orElseThrow(() -> new InvalidRequestException("tools: not an object"));
-    }
-
-    /** The content block as it was sent: the only access to a block of a type the model has no variant for. */
-    public static JsonValue raw(BetaContentBlockParam block) {
-        return block._json().orElseThrow(() -> new InvalidRequestException("content: block is not an object"));
-    }
-
-    /** The type of a content block as sent: of a block of a type the model has no variant for too. */
-    public static String blockType(BetaContentBlockParam block) {
-        return type(raw(block)).orElse("(none)");
-    }
-
-    /** What a JSON value is, as the SDK reads it: the helpers keep the types its raw accessors lose. */
+    /** The string a constant of the model holds, such as the {@code media_type} of a PDF. */
     public static Optional<String> string(JsonValue value) {
         return field(value).asString();
     }
 
-    public static Optional<Boolean> bool(JsonValue value) {
-        return field(value).asBoolean();
-    }
-
-    /** A model of the SDK as the JSON value it is written as, to read it as sent. */
-    public static JsonValue rawModel(Object model) {
-        return MAPPER.convertValue(model, JsonValue.class);
-    }
-
-    /** A JSON value as plain maps, lists and scalars, in the order it was sent. */
-    public static Map<String, Object> toMap(JsonValue value) {
-        Map<String, Object> map = value.convert(new TypeReference<Map<String, Object>>() {});
+    /** A model of the SDK as plain maps, lists and scalars, in the order and spelling the API uses. */
+    public static Map<String, Object> toMap(Object model) {
+        Map<String, Object> map = MAPPER.convertValue(model, new TypeReference<Map<String, Object>>() {});
         return map == null ? Map.of() : map;
     }
 
-    public static Optional<List<JsonValue>> array(JsonValue value) {
-        return field(value).asArray();
+    /**
+     * The content of a {@code mid_conv_system} block, a block of Core's that the SDK has no variant for: read as the
+     * type it is, not as JSON. Empty if the block holds none.
+     */
+    public static Optional<BetaSystemMessageParam.Content> midConvSystem(Optional<JsonValue> block) {
+        return block.map(json -> MAPPER.convertValue(json, MidConvSystem.class))
+                .flatMap(midConv -> Optional.ofNullable(midConv.content()));
     }
 
-    public static Optional<Map<String, JsonValue>> object(JsonValue value) {
-        return field(value).asObject();
-    }
-
-    /** The {@code type} of a block or tool as sent, if any. */
-    public static Optional<String> type(JsonValue raw) {
-        return field(raw)
-                .asObject()
-                .flatMap(o -> Optional.ofNullable(o.get("type")))
-                .flatMap(type -> field(type).asString());
-    }
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record MidConvSystem(@JsonProperty("content") BetaSystemMessageParam.Content content) {}
 
     /** {@link JsonValue} extends the raw {@code JsonField}: through this its accessors keep their types. */
     private static JsonField<?> field(JsonValue value) {

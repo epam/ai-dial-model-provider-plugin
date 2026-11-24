@@ -1,6 +1,5 @@
 package com.epam.aidial.provider.translation;
 
-import com.anthropic.core.JsonValue;
 import com.anthropic.models.beta.messages.BetaContentBlockParam;
 import com.anthropic.models.beta.messages.BetaMessageContentParam;
 import com.anthropic.models.beta.messages.BetaMessageParam;
@@ -76,13 +75,10 @@ final class InputItems {
     /** What the Messages body holds of a message to Core, which counts a string as the one block of an array. */
     private static int blockCount(BetaMessageParam message) {
         if (message.role().asString().equals("system")) {
-            JsonValue content = message.system()
-                    .flatMap(s -> s.content())
-                    .flatMap(c -> c._json())
-                    .orElse(null);
-            return content == null
-                    ? 0
-                    : AnthropicJson.array(content).map(List::size).orElse(1);
+            return message.system()
+                    .flatMap(system -> system.content())
+                    .map(content -> content.blocks().map(List::size).orElse(1))
+                    .orElse(0);
         }
         return message.content()
                 .map(content -> content.string().isPresent()
@@ -245,7 +241,7 @@ final class InputItems {
                 system.addAll(message);
                 turn.itemOfBlock.set(k, message.isEmpty() ? null : message.getFirst());
             } else {
-                dropped.add("assistant content block " + AnthropicJson.blockType(block));
+                dropped.add("assistant content block " + AnthropicJson.typeName(block.type()._value()));
             }
             if (item != null) {
                 flush(texts, textBlocks, items, turn);
@@ -332,56 +328,59 @@ final class InputItems {
     }
 
     private Turn systemTurn(Optional<BetaSystemMessageParam> system) {
-        JsonValue content =
-                system.flatMap(s -> s.content()).flatMap(c -> c._json()).orElse(null);
-        if (content == null) {
+        Optional<BetaSystemMessageParam.Content> content = system.flatMap(s -> s.content());
+        if (content.isEmpty()) {
             return Turn.hidden(0);
         }
-        List<Map<String, Object>> message = systemMessage(content);
+        List<Map<String, Object>> message = systemMessage(content.get());
         return Turn.of(
-                AnthropicJson.array(content).map(List::size).orElse(1), message.isEmpty() ? null : message.getFirst());
+                content.get().blocks().map(List::size).orElse(1),
+                message.isEmpty() ? null : message.getFirst());
     }
 
     private static boolean isMidConvSystem(BetaContentBlockParam block) {
-        return AnthropicJson.blockType(block).equals(MID_CONV_SYSTEM);
+        return AnthropicJson.typeName(block.type()._value()).equals(MID_CONV_SYSTEM);
     }
 
     private List<Map<String, Object>> midConvSystem(BetaContentBlockParam block) {
-        JsonValue content = AnthropicJson.object(AnthropicJson.raw(block))
-                .map(object -> object.get("content"))
-                .orElse(null);
-        return content == null ? List.of() : systemMessage(content);
+        return AnthropicJson.midConvSystem(block._json())
+                .map(this::systemMessage)
+                .orElse(List.of());
     }
 
-    private List<Map<String, Object>> systemMessage(JsonValue content) {
+    private List<Map<String, Object>> systemMessage(BetaSystemMessageParam.Content content) {
         List<Map<String, Object>> systemParts = systemParts(content);
         return systemParts.isEmpty() ? List.of() : List.of(message("system", systemParts));
     }
 
-    /** The text of a system turn's content, as sent: a string, or blocks, which may hold a nested system block. */
-    private List<Map<String, Object>> systemParts(JsonValue content) {
+    /** The text of a system turn's content: a string, or blocks, which may hold a nested system block. */
+    private List<Map<String, Object>> systemParts(BetaSystemMessageParam.Content content) {
         List<Map<String, Object>> systemParts = new ArrayList<>();
-        Optional<String> string = AnthropicJson.string(content);
-        if (string.isPresent()) {
-            if (!string.get().isEmpty()) {
-                systemParts.add(ContentParts.text(string.get()));
-            }
-            return systemParts;
-        }
-        for (JsonValue element : AnthropicJson.array(content).orElse(List.of())) {
-            Map<String, JsonValue> block = AnthropicJson.object(element).orElse(Map.of());
-            String type = AnthropicJson.type(element).orElse("(none)");
-            switch (type) {
-                case "text" ->
-                    AnthropicJson.string(block.getOrDefault("text", JsonValue.from("")))
+        content.string().filter(text -> !text.isEmpty()).ifPresent(text -> systemParts.add(ContentParts.text(text)));
+        for (BetaSystemMessageParam.Content.SystemMessageContentBlock block :
+                content.blocks().orElse(List.of())) {
+            switch (block.type().value()) {
+                case TEXT ->
+                    Optional.of(block.asText().text())
                             .filter(text -> !text.isEmpty())
                             .ifPresent(text -> systemParts.add(ContentParts.text(text)));
-                case MID_CONV_SYSTEM ->
-                    systemParts.addAll(systemParts(block.getOrDefault("content", JsonValue.from(List.of()))));
-                default -> dropped.add("system content block " + type);
+                case TOOL_ADDITION, TOOL_REMOVAL -> dropped.add("system content block " + typeName(block));
+                // Core's block, which the SDK has no variant for
+                case _UNKNOWN -> {
+                    if (typeName(block).equals(MID_CONV_SYSTEM)) {
+                        AnthropicJson.midConvSystem(block._json())
+                                .ifPresent(nested -> systemParts.addAll(systemParts(nested)));
+                    } else {
+                        dropped.add("system content block " + typeName(block));
+                    }
+                }
             }
         }
         return systemParts;
+    }
+
+    private static String typeName(BetaSystemMessageParam.Content.SystemMessageContentBlock block) {
+        return AnthropicJson.typeName(block.type()._value());
     }
 
     static Map<String, Object> message(String role, Object content) {

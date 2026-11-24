@@ -90,7 +90,7 @@ final class RequestTranslator {
             return Optional.empty();
         }
         Map<String, Object> schema =
-                format._schema().isMissing() ? Map.of() : AnthropicJson.toMap(AnthropicJson.rawModel(format.schema()));
+                format._schema().isMissing() ? Map.of() : AnthropicJson.toMap(format.schema());
         if (schema.isEmpty()) {
             dropped.add("output_config.format without a schema");
             return Optional.empty();

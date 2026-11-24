@@ -53,7 +53,7 @@ final class ContentParts {
         if (block.isCompaction()) {
             return texts(block.asCompaction().content().orElse(""));
         }
-        dropped.add("content block " + AnthropicJson.blockType(block));
+        dropped.add("content block " + AnthropicJson.typeName(block.type()._value()));
         return List.of();
     }
 
@@ -72,7 +72,7 @@ final class ContentParts {
                 parts.add(text(searchResult(block.asSearchResult())));
             } else if (!block.isToolReference()) {
                 // A reference names a tool for the Anthropic tool search to load: nothing to carry over
-                dropped.add("tool result content " + rawType(block._json()));
+                dropped.add("tool result content " + AnthropicJson.typeName(block.type()._value()));
             }
         }
         return parts;
@@ -95,7 +95,7 @@ final class ContentParts {
         } else if (source.isFile()) {
             throw new InvalidRequestException(FILES_API_UNSUPPORTED);
         } else {
-            dropped.add("image source " + rawType(source._json()));
+            dropped.add("image source " + AnthropicJson.typeName(source.type()._value()));
             return Optional.empty();
         }
         Map<String, Object> part = new LinkedHashMap<>();
@@ -133,7 +133,7 @@ final class ContentParts {
         if (source.isFile()) {
             throw new InvalidRequestException(FILES_API_UNSUPPORTED);
         }
-        dropped.add("document source " + rawType(source._json()));
+        dropped.add("document source " + AnthropicJson.typeName(source.type()._value()));
         return List.of();
     }
 
@@ -147,7 +147,7 @@ final class ContentParts {
             } else if (block.isImage()) {
                 image(block.asImage()).ifPresent(parts::add);
             } else {
-                dropped.add("document content block " + rawType(block._json()));
+                dropped.add("document content block " + AnthropicJson.typeName(block.type()._value()));
             }
         }
         return parts;
@@ -159,9 +159,5 @@ final class ContentParts {
                 .filter(t -> !t.isEmpty())
                 .collect(Collectors.joining("\n"));
         return block.title() + "\n" + block.source() + "\n\n" + text;
-    }
-
-    private static String rawType(Optional<com.anthropic.core.JsonValue> raw) {
-        return raw.flatMap(AnthropicJson::type).orElse("(none)");
     }
 }

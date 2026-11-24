@@ -56,7 +56,7 @@ class AnthropicJsonTest {
     }
 
     @Test
-    void toolsAreToldApartByTheirRawType() {
+    void toolsAreToldApartByTheirKind() {
         MessageCreateParams.Body body = request(
                 """
                 {"tools":[{"name":"f","description":"d","input_schema":{"type":"object"}},
@@ -66,22 +66,22 @@ class AnthropicJsonTest {
                           {"type":"brand_new_tool_2030","name":"zzz"}]}""");
         List<BetaToolUnion> tools = body.tools().orElseThrow();
         assertEquals(
-                List.of("custom", "custom", "web_search_20250305", "bash_20250124", "brand_new_tool_2030"),
-                tools.stream().map(AnthropicJson::toolType).toList());
+                List.of(ToolKind.CUSTOM, ToolKind.CUSTOM, ToolKind.WEB_SEARCH, ToolKind.OTHER, ToolKind.OTHER),
+                tools.stream().map(ToolKind::of).toList());
         assertTrue(tools.get(4).isBetaTool(), "the model itself takes the unknown tool for a custom one");
         assertEquals(
-                "{type=brand_new_tool_2030, name=zzz}",
-                AnthropicJson.raw(tools.get(4)).toString());
+                java.util.Map.of("type", "brand_new_tool_2030", "name", "zzz"), AnthropicJson.toMap(tools.get(4)));
     }
 
     @Test
-    void blocksTheModelHasNoVariantForAreRaw() {
+    void blocksTheModelHasNoVariantForAreNamedByTheirType() {
         MessageCreateParams.Body body = request(
                 """
                 {"messages":[{"role":"user","content":[
                   {"type":"text","text":"hi"},
                   {"type":"mid_conv_system","content":"sys"},
-                  {"type":"brand_new_block","a":1}]}]}""");
+                  {"type":"brand_new_block","a":1},
+                  {"a":1}]}]}""");
         List<BetaContentBlockParam> blocks = body.messages()
                 .get(0)
                 .user()
@@ -90,13 +90,16 @@ class AnthropicJsonTest {
                 .contentBlockParams()
                 .orElseThrow();
         assertEquals(
-                List.of("text", "mid_conv_system", "brand_new_block"),
+                List.of("text", "mid_conv_system", "brand_new_block", "(none)"),
                 blocks.stream()
-                        .map(b -> AnthropicJson.type(AnthropicJson.raw(b)).orElseThrow())
+                        .map(b -> AnthropicJson.typeName(b.type()._value()))
                         .toList());
         assertEquals(
-                "{type=mid_conv_system, content=sys}",
-                AnthropicJson.raw(blocks.get(1)).toString());
+                "sys",
+                AnthropicJson.midConvSystem(blocks.get(1)._json())
+                        .orElseThrow()
+                        .string()
+                        .orElseThrow());
     }
 
     @Test

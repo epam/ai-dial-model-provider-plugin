@@ -3,7 +3,7 @@ package com.epam.aidial.provider.translation;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.CoreCall;
+import com.epam.aidial.provider.api.ModelProvider;
 import com.epam.aidial.provider.upstream.ClientGoneException;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -17,16 +17,16 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The Responses call of the translator when it runs as a plugin of DIAL Core: DIAL Core is called in its own process,
- * through the host of the request ({@link CoreCall}), with no HTTP call and no key to look up; the call is served with
- * the credentials of the request. What is called is the same as over HTTP (see {@link CoreCallback}).
+ * through the host of the request ({@link AdapterRequest#core()}), with no HTTP call and no key to look up; the call is
+ * served with the credentials of the request. What is called is the same as over HTTP (see {@link CoreCallback}).
  */
-final class HostUpstream implements ResponsesUpstream {
+final class HostUpstream implements ModelProvider {
 
     private static final Logger log = LoggerFactory.getLogger(HostUpstream.class);
 
     @Override
-    public Future<AdapterResponse> create(AdapterRequest request) {
-        CoreCall core = request.core();
+    public Future<AdapterResponse> handle(AdapterRequest request) {
+        ModelProvider core = request.core();
         if (core == null) {
             throw new IllegalStateException("no host to call DIAL Core through");
         }
@@ -39,7 +39,7 @@ final class HostUpstream implements ResponsesUpstream {
                 CoreCallback.headers(request.headers()),
                 body,
                 request.aborted());
-        return core.call(call)
+        return core.handle(call)
                 .compose(
                         answer -> stream && answer.status() / 100 == 2 ? Future.succeededFuture(answer) : whole(answer))
                 .recover(e -> {

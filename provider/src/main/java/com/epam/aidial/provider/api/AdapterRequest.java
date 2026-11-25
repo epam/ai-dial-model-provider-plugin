@@ -15,8 +15,8 @@ import org.jspecify.annotations.Nullable;
  * @param query   the raw query string, without {@code ?}; {@code null} when the request has none
  * @param aborted completes when the caller goes away before the response has ended; a provider cancels the
  *                upstream call it made for the request
- * @param core    how to call DIAL Core while serving the request, when the request came in the process of DIAL Core
- *                (a plugin); null for a request that came over HTTP
+ * @param core    DIAL Core's create operations, called in the process of DIAL Core with the credentials of the
+ *                request being served (the plugin API's host); null for a request that came over HTTP
  */
 public record AdapterRequest(
         HttpMethod method,
@@ -25,7 +25,7 @@ public record AdapterRequest(
         MultiMap headers,
         Buffer body,
         Future<Void> aborted,
-        @Nullable CoreCall core) {
+        @Nullable ModelProvider core) {
 
     public AdapterRequest(
             HttpMethod method, String path, String query, MultiMap headers, Buffer body, Future<Void> aborted) {

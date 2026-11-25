@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The Anthropic Messages API of a model that only speaks the OpenAI Responses API: the request is translated, sent to
- * the {@link ResponsesUpstream}, and what comes back is translated into the answer of the Messages API. Everything the
+ * the {@link ModelProvider}, and what comes back is translated into the answer of the Messages API. Everything the
  * client sees is Anthropic-shaped, errors included.
  *
  * <p>A request that cannot be translated is a 400; an answer of the upstream that is not what the Responses API says
@@ -45,18 +45,18 @@ public final class MessagesOverResponses implements ModelProvider {
     /** DIAL Core names the deployment the client called: the model of the message, whatever model the request says. */
     static final String DEPLOYMENT_HEADER = "X-DIAL-DEPLOYMENT-ID";
 
-    private final ResponsesUpstream upstream;
+    private final ModelProvider upstream;
 
     /** Served through its own client, which is {@code ModelProviders}' to close. */
     public static MessagesOverResponses overDialCore(UpstreamClient client, @Nullable String dialUrl) {
-        ResponsesUpstream http = new DialCoreUpstream(client, dialUrl);
-        ResponsesUpstream host = new HostUpstream();
+        ModelProvider http = new DialCoreUpstream(client, dialUrl);
+        ModelProvider host = new HostUpstream();
         // A request that came through the host of a plugin calls DIAL Core through it: in process, with its credentials
         return new MessagesOverResponses(
-                request -> request.core() != null ? host.create(request) : http.create(request));
+                request -> request.core() != null ? host.handle(request) : http.handle(request));
     }
 
-    public MessagesOverResponses(ResponsesUpstream upstream) {
+    public MessagesOverResponses(ModelProvider upstream) {
         this.upstream = upstream;
     }
 
@@ -87,7 +87,7 @@ public final class MessagesOverResponses implements ModelProvider {
         }
         AdapterRequest call = upstreamRequest(
                 request, ResponsesJson.requestJson(translated.request(), streaming), translated.cachePaths());
-        return Answers.call(upstream::create, call)
+        return Answers.call(upstream, call)
                 .map(answer -> streaming
                         ? stream(answer, deployment, names, translated.cachePaths())
                         : answer(answer, deployment, names, translated.cachePaths()))

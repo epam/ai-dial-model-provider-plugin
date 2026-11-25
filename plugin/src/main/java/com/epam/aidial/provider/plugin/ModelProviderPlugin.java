@@ -8,7 +8,7 @@ import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.CoreCall;
+import com.epam.aidial.provider.api.ModelProvider;
 import com.epam.aidial.provider.core.Answers;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.core.CompatRouter;
@@ -70,7 +70,7 @@ final class ModelProviderPlugin implements Plugin {
                 .map(response -> new Answer(context, response, aborted));
     }
 
-    private static CoreCall coreCall(HostDelegate host, Future<Void> aborted) {
+    private static ModelProvider coreCall(HostDelegate host, Future<Void> aborted) {
         return call -> {
             ObjectNode body;
             try {

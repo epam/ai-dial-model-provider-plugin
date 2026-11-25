@@ -59,6 +59,9 @@ final class StreamTranslator {
 
     private final String model;
     private final ToolNames names;
+    /** The SSE text said by the event being told, which {@link #drain} hands over. */
+    private final List<String> out = new ArrayList<>();
+
     private String messageId = java.util.UUID.randomUUID().toString();
     private int nextIndex;
     private boolean terminated;
@@ -79,7 +82,10 @@ final class StreamTranslator {
 
     /** The upstream is alive, and says it between two events. */
     List<String> onHeartbeat() {
-        return terminated ? List.of() : List.of(sse("ping", Map.of("type", "ping")));
+        if (!terminated) {
+            out.add(sse("ping", Map.of("type", "ping")));
+        }
+        return drain();
     }
 
     /** The data of one event of the upstream's stream. */
@@ -87,38 +93,42 @@ final class StreamTranslator {
         if (terminated) {
             return List.of();
         }
-        List<String> out = new ArrayList<>();
         try {
             ResponseStreamEvent event = ResponsesJson.parseEvent(data.getBytes(StandardCharsets.UTF_8));
-            event.accept(new Events(out));
+            event.accept(new Events());
         } catch (UpstreamResponseException | OpenAIInvalidDataException e) {
             log.error("The Responses API stream holds what is not a Responses API event: {}", e.getMessage());
-            error(500, "Internal server error", out);
+            error(500, "Internal server error");
         } catch (RuntimeException e) {
             log.error("A Responses API event could not be translated", e);
-            error(500, "Internal server error", out);
+            error(500, "Internal server error");
         }
-        return out;
+        return drain();
     }
 
     /** The upstream's stream ended. */
     List<String> onEnd() {
-        List<String> out = new ArrayList<>();
         if (!terminated) {
             log.warn("The Responses API stream ended without a final event");
-            error(502, "The Responses API stream ended before the response completed", out);
+            error(502, "The Responses API stream ended before the response completed");
         }
-        return out;
+        return drain();
     }
 
     /** The upstream's stream broke. */
     List<String> onFailure(Throwable cause) {
-        List<String> out = new ArrayList<>();
         if (!terminated) {
             log.error("The Responses API stream failed", cause);
-            error(500, "Internal server error", out);
+            error(500, "Internal server error");
         }
-        return out;
+        return drain();
+    }
+
+    /** The events said since the last call, which the next call starts over from. */
+    private List<String> drain() {
+        List<String> events = List.copyOf(out);
+        out.clear();
+        return events;
     }
 
     /**
@@ -127,83 +137,77 @@ final class StreamTranslator {
      */
     private final class Events implements ResponseStreamEvent.Visitor<Void> {
 
-        private final List<String> out;
-
-        Events(List<String> out) {
-            this.out = out;
-        }
-
         @Override
         public Void visitCreated(ResponseCreatedEvent created) {
             messageId = created.response().id();
-            start(out);
+            start();
             return null;
         }
 
         @Override
         public Void visitOutputItemAdded(ResponseOutputItemAddedEvent added) {
-            itemAdded(added, out);
+            itemAdded(added);
             return null;
         }
 
         @Override
         public Void visitOutputTextDelta(ResponseTextDeltaEvent delta) {
-            textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta(), out);
+            textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta());
             return null;
         }
 
         @Override
         public Void visitRefusalDelta(ResponseRefusalDeltaEvent delta) {
-            textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta(), out);
+            textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta());
             return null;
         }
 
         @Override
         public Void visitFunctionCallArgumentsDelta(ResponseFunctionCallArgumentsDeltaEvent delta) {
-            argumentsDelta(delta, out);
+            argumentsDelta(delta);
             return null;
         }
 
         @Override
         public Void visitReasoningSummaryTextDelta(ResponseReasoningSummaryTextDeltaEvent delta) {
-            thinkingDelta(delta.outputIndex(), "summary:" + delta.summaryIndex(), delta.delta(), out);
+            thinkingDelta(delta.outputIndex(), "summary:" + delta.summaryIndex(), delta.delta());
             return null;
         }
 
         @Override
         public Void visitReasoningTextDelta(ResponseReasoningTextDeltaEvent delta) {
-            thinkingDelta(delta.outputIndex(), "content:" + delta.contentIndex(), delta.delta(), out);
+            thinkingDelta(delta.outputIndex(), "content:" + delta.contentIndex(), delta.delta());
             return null;
         }
 
         @Override
         public Void visitOutputItemDone(ResponseOutputItemDoneEvent done) {
-            itemDone(done, out);
+            itemDone(done);
             return null;
         }
 
         @Override
         public Void visitCompleted(ResponseCompletedEvent completed) {
-            finish(completed.response(), out);
+            finish(completed.response());
             return null;
         }
 
         @Override
         public Void visitIncomplete(ResponseIncompleteEvent incomplete) {
-            finish(incomplete.response(), out);
+            finish(incomplete.response());
             return null;
         }
 
         @Override
         public Void visitFailed(ResponseFailedEvent failed) {
             ResponseTranslator.ResponseFailedException failure = ResponseTranslator.failure(failed.response());
-            error(failure.status(), failure.getMessage(), out);
+            error(failure.status(), failure.getMessage());
             return null;
         }
 
         @Override
         public Void visitError(ResponseErrorEvent failure) {
-            error(ErrorCodes.status(failure.code().orElse("")), failure.message(), out);
+            error(ErrorCodes.status(failure.code().orElse("")), failure.message());
             return null;
         }
 
@@ -227,7 +231,7 @@ final class StreamTranslator {
         }
     }
 
-    private void start(List<String> out) {
+    private void start() {
         if (started) {
             return;
         }
@@ -247,9 +251,9 @@ final class StreamTranslator {
                 .build())));
     }
 
-    private void openBlock(String key, ContentBlock block, List<String> out) {
-        start(out);
-        closeBlock(out);
+    private void openBlock(String key, ContentBlock block) {
+        start();
+        closeBlock();
         openKey = key;
         openIndex = nextIndex++;
         out.add(sse(RawContentBlockStartEvent.builder()
@@ -262,7 +266,7 @@ final class StreamTranslator {
         return key.equals(openKey);
     }
 
-    private void delta(UnaryOperator<RawContentBlockDeltaEvent.Builder> delta, List<String> out) {
+    private void delta(UnaryOperator<RawContentBlockDeltaEvent.Builder> delta) {
         if (openKey == null) {
             log.warn("Delta event has arrived before open event for a content block");
             return;
@@ -271,7 +275,7 @@ final class StreamTranslator {
                 .build()));
     }
 
-    private void closeBlock(List<String> out) {
+    private void closeBlock() {
         if (openKey == null) {
             return;
         }
@@ -279,39 +283,38 @@ final class StreamTranslator {
         out.add(sse(RawContentBlockStopEvent.builder().index(openIndex).build()));
     }
 
-    private void textDelta(String key, String text, List<String> out) {
+    private void textDelta(String key, String text) {
         if (!isOpen(key)) {
-            openBlock(key, Blocks.text(""), out);
+            openBlock(key, Blocks.text(""));
         }
-        delta(chunk -> chunk.textDelta(text), out);
+        delta(chunk -> chunk.textDelta(text));
     }
 
-    private void thinkingDelta(long outputIndex, String part, String text, List<String> out) {
+    private void thinkingDelta(long outputIndex, String part, String text) {
         if (text.isEmpty()) {
             return;
         }
         String key = "reasoning:" + outputIndex;
         String shown = text;
         if (!isOpen(key)) {
-            openBlock(key, Blocks.thinking("", ""), out);
+            openBlock(key, Blocks.thinking("", ""));
         } else if (!part.equals(reasoningPart)) {
             // Separates the summary parts the way a block response joins them
             shown = "\n\n" + text;
         }
         reasoningPart = part;
         String thought = shown;
-        delta(chunk -> chunk.thinkingDelta(thought), out);
+        delta(chunk -> chunk.thinkingDelta(thought));
     }
 
-    private void itemAdded(ResponseOutputItemAddedEvent added, List<String> out) {
+    private void itemAdded(ResponseOutputItemAddedEvent added) {
         added.item().accept(new ResponseOutputItem.Visitor<Void>() {
             @Override
             public Void visitFunctionCall(ResponseFunctionToolCall call) {
                 hasToolCall = true;
                 openBlock(
                         "function:" + added.outputIndex(),
-                        Blocks.toolUse(call.callId(), names.toClient(call.name()), JsonValue.from(Map.of())),
-                        out);
+                        Blocks.toolUse(call.callId(), names.toClient(call.name()), JsonValue.from(Map.of())));
                 return null;
             }
 
@@ -322,15 +325,15 @@ final class StreamTranslator {
         });
     }
 
-    private void argumentsDelta(ResponseFunctionCallArgumentsDeltaEvent delta, List<String> out) {
+    private void argumentsDelta(ResponseFunctionCallArgumentsDeltaEvent delta) {
         if (!isOpen("function:" + delta.outputIndex()) || delta.delta().isEmpty()) {
             return;
         }
         streamedArguments.add(delta.outputIndex());
-        delta(chunk -> chunk.inputJsonDelta(delta.delta()), out);
+        delta(chunk -> chunk.inputJsonDelta(delta.delta()));
     }
 
-    private void itemDone(ResponseOutputItemDoneEvent done, List<String> out) {
+    private void itemDone(ResponseOutputItemDoneEvent done) {
         done.item().accept(new ResponseOutputItem.Visitor<Void>() {
             @Override
             public Void visitFunctionCall(ResponseFunctionToolCall call) {
@@ -341,23 +344,23 @@ final class StreamTranslator {
                 String arguments = call.arguments();
                 if (!streamedArguments.contains(done.outputIndex()) && !arguments.isEmpty()) {
                     // The arguments an upstream sent without the deltas
-                    delta(chunk -> chunk.inputJsonDelta(arguments), out);
+                    delta(chunk -> chunk.inputJsonDelta(arguments));
                 }
-                closeBlock(out);
+                closeBlock();
                 return null;
             }
 
             @Override
             public Void visitReasoning(ResponseReasoningItem reasoning) {
-                reasoningDone("reasoning:" + done.outputIndex(), reasoning, out);
+                reasoningDone("reasoning:" + done.outputIndex(), reasoning);
                 return null;
             }
 
             @Override
             public Void visitMessage(ResponseOutputMessage message) {
                 for (ContentBlock citation : ResponseTranslator.citationBlocks(message, seenUrls)) {
-                    openBlock("citation", citation, out);
-                    closeBlock(out);
+                    openBlock("citation", citation);
+                    closeBlock();
                 }
                 isRefusal |= ResponseTranslator.hasRefusal(message);
                 return null;
@@ -377,27 +380,27 @@ final class StreamTranslator {
      * The encrypted reasoning arrives once its text has been streamed: it is the signature of the open block. A
      * reasoning whose text was not streamed is one whole block.
      */
-    private void reasoningDone(String key, ResponseReasoningItem item, List<String> out) {
+    private void reasoningDone(String key, ResponseReasoningItem item) {
         if (isOpen(key)) {
             item.encryptedContent()
                     .filter(encrypted -> !encrypted.isEmpty())
-                    .ifPresent(encrypted -> delta(
-                            chunk -> chunk.signatureDelta(new ReasoningWrapper(item.id(), encrypted).encode()), out));
-            closeBlock(out);
+                    .ifPresent(encrypted ->
+                            delta(chunk -> chunk.signatureDelta(new ReasoningWrapper(item.id(), encrypted).encode())));
+            closeBlock();
         } else {
             ResponseTranslator.thinkingBlock(item).ifPresent(block -> {
-                openBlock(key, block, out);
-                closeBlock(out);
+                openBlock(key, block);
+                closeBlock();
             });
         }
     }
 
-    private void finish(Response response, List<String> out) {
-        start(out);
+    private void finish(Response response) {
+        start();
         if (nextIndex == 0) {
-            openBlock("text", Blocks.text(""), out);
+            openBlock("text", Blocks.text(""));
         }
-        closeBlock(out);
+        closeBlock();
         terminated = true;
         StopReason stopReason =
                 ResponseTranslator.stopReason(ResponseTranslator.incompleteReason(response), hasToolCall, isRefusal);
@@ -425,7 +428,7 @@ final class StreamTranslator {
                 .build();
     }
 
-    private void error(int status, String message, List<String> out) {
+    private void error(int status, String message) {
         if (terminated) {
             return;
         }

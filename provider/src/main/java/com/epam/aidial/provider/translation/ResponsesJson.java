@@ -37,18 +37,6 @@ public final class ResponsesJson {
         return read(json, ResponseStreamEvent.class);
     }
 
-    /**
-     * A counter: 0 if absent or null.
-     *
-     * @throws OpenAIInvalidDataException if it is not a number
-     */
-    public static long count(JsonField<Long> field, String name) {
-        if (field.isMissing() || field.isNull()) {
-            return 0;
-        }
-        return field.asKnown().orElseThrow(() -> new OpenAIInvalidDataException(name + " is not a number"));
-    }
-
     /** The {@code type} of an output item or content part as sent, if it has one. */
     public static Optional<String> type(Optional<JsonValue> raw) {
         return raw.flatMap(value -> field(value).asObject())
@@ -63,19 +51,6 @@ public final class ResponsesJson {
      */
     public static String requiredType(Optional<JsonValue> raw, String what) {
         return type(raw).orElseThrow(() -> new OpenAIInvalidDataException(what + " has no type"));
-    }
-
-    /**
-     * A nested object: empty if absent or null.
-     *
-     * @throws OpenAIInvalidDataException if it is not an object of the type
-     */
-    public static <T> Optional<T> object(JsonField<T> field, String name) {
-        if (field.isMissing() || field.isNull()) {
-            return Optional.empty();
-        }
-        return Optional.of(
-                field.asKnown().orElseThrow(() -> new OpenAIInvalidDataException(name + " is not an object")));
     }
 
     /** {@link JsonValue} extends the raw {@code JsonField}: through this its accessors keep their types. */

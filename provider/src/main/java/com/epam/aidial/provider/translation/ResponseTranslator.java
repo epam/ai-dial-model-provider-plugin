@@ -8,6 +8,7 @@ import com.anthropic.models.messages.OutputTokensDetails;
 import com.anthropic.models.messages.ServerToolUsage;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.Usage;
+import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseFunctionWebSearch;
@@ -243,11 +244,7 @@ final class ResponseTranslator {
     static ResponseFailedException failure(Response response) {
         return response.error()
                 .map(error -> new ResponseFailedException(
-                        ErrorCodes.status(error._code()
-                                .asKnown()
-                                .map(code -> code.asString())
-                                .orElse("")),
-                        error.message()))
+                        ErrorCodes.status(error.code().asString()), error.message()))
                 .orElseGet(() -> new ResponseFailedException(500, "The Responses API response has failed"));
     }
 
@@ -268,26 +265,26 @@ final class ResponseTranslator {
                     .serverToolUse(Optional.empty())
                     .build();
         }
-        long input = ResponsesJson.count(tokens._inputTokens(), "usage.input_tokens");
-        ResponseUsage.InputTokensDetails inputDetails = ResponsesJson.object(
-                        tokens._inputTokensDetails(), "usage.input_tokens_details")
-                .orElse(null);
-        long cached = inputDetails == null
-                ? 0
-                : ResponsesJson.count(inputDetails._cachedTokens(), "usage.input_tokens_details.cached_tokens");
-        long written = inputDetails == null
-                ? 0
-                : ResponsesJson.count(
-                        inputDetails._cacheWriteTokens(), "usage.input_tokens_details.cache_write_tokens");
+        long input;
+        long output;
+        long cached;
+        long written;
+        long thinking;
+        try {
+            input = tokens.inputTokens();
+            output = tokens.outputTokens();
+            cached = tokens.inputTokensDetails().cachedTokens();
+            written = tokens.inputTokensDetails().cacheWriteTokens();
+            thinking = tokens.outputTokensDetails().reasoningTokens();
+        } catch (OpenAIInvalidDataException e) {
+            log.debug("Invalid usage: {}", tokens, e);
+            throw new OpenAIInvalidDataException("The usage is invalid", e);
+        }
         long cacheRead = Math.min(cached, input);
         long cacheWrite = Math.min(written, input - cacheRead);
-        long thinking = ResponsesJson.object(tokens._outputTokensDetails(), "usage.output_tokens_details")
-                .map(details ->
-                        ResponsesJson.count(details._reasoningTokens(), "usage.output_tokens_details.reasoning_tokens"))
-                .orElse(0L);
         return usageBuilder()
                 .inputTokens(input - cacheRead - cacheWrite)
-                .outputTokens(ResponsesJson.count(tokens._outputTokens(), "usage.output_tokens"))
+                .outputTokens(output)
                 .cacheReadInputTokens(cacheRead)
                 .cacheCreationInputTokens(cacheWrite)
                 .outputTokensDetails(
@@ -314,10 +311,10 @@ final class ResponseTranslator {
                 continue;
             }
             ResponseFunctionWebSearch call = item.asWebSearchCall();
-            Optional<ResponseFunctionWebSearch.Action> action = ResponsesJson.object(call._action(), "action");
-            if (action.isPresent() && action.get().search().isPresent()) {
+            ResponseFunctionWebSearch.Action action = call.action();
+            if (action.search().isPresent()) {
                 searches++;
-            } else if (action.isPresent() && action.get().openPage().isPresent()) {
+            } else if (action.openPage().isPresent()) {
                 fetches++;
             }
         }

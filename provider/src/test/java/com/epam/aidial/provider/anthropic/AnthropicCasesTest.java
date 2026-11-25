@@ -83,19 +83,19 @@ class AnthropicCasesTest {
                 config,
                 () -> StaticCredentialsProvider.create(AwsBasicCredentials.create(
                         stubs.path("aws_access_key_id").asText("AKID"), "s")));
-        Targets.Resolver resolver;
+        AnthropicTargets.Resolver resolver;
         Limits connections;
         switch (adapter) {
             case "openai" -> {
-                resolver = Targets.openai();
+                resolver = AnthropicTargets.openai();
                 connections = config.openai();
             }
             case "vertexai" -> {
-                resolver = Targets.vertexai(config);
+                resolver = AnthropicTargets.vertexai(config);
                 connections = config.vertexai();
             }
             default -> {
-                resolver = Targets.bedrock(config, aws, SessionTags.of(config, DialApi.from(vertx, config)));
+                resolver = AnthropicTargets.bedrock(config, aws, SessionTags.of(config, DialApi.from(vertx, config)));
                 connections = config.bedrock();
             }
         }

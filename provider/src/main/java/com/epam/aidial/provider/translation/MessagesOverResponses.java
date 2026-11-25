@@ -24,7 +24,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,17 +53,17 @@ public final class MessagesOverResponses implements Handler {
      */
     private final boolean callsCore;
 
-    /** Served through its own client, which is {@code ModelProviders}' to close. */
-    public static MessagesOverResponses overDialCore(UpstreamClient client, @Nullable String dialUrl) {
-        Handler http = new DialCoreUpstream(client, dialUrl);
-        Handler host = new HostUpstream();
-        // A request that came through the host of a plugin calls DIAL Core through it: in process, with its credentials
-        return new MessagesOverResponses(
-                request -> request.core() != null ? host.handle(request) : http.handle(request), true);
+    /** Served by an upstream of its own: it gets the model of the client's request. */
+    public static MessagesOverResponses withOwnUpstream(Handler upstream) {
+        return new MessagesOverResponses(upstream, false);
     }
 
-    public MessagesOverResponses(Handler upstream) {
-        this(upstream, false);
+    /**
+     * Served through DIAL Core, which routes the Responses API by the model: the call names the deployment. {@code
+     * upstream} is {@link CoreHandler#handle}.
+     */
+    public static MessagesOverResponses withCoreUpstream(Handler upstream) {
+        return new MessagesOverResponses(upstream, true);
     }
 
     private MessagesOverResponses(Handler upstream, boolean callsCore) {
@@ -74,7 +73,7 @@ public final class MessagesOverResponses implements Handler {
 
     @Override
     public Future<AdapterResponse> handle(AdapterRequest request) {
-        if (!request.path().equals(MESSAGES_PATH)) {
+        if (request.method() != HttpMethod.POST || !request.path().equals(MESSAGES_PATH)) {
             // count_tokens: the Responses API has nothing to count with
             return Future.succeededFuture(AnthropicErrors.error(404, "not_found_error", "Endpoint not supported"));
         }

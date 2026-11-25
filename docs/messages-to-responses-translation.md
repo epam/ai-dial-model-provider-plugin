@@ -32,7 +32,7 @@ interface of a model (`anthropicMessages`) as a translator with the base URL `<t
 | headers that go back | `api-key` (the per-request key), `x-dial-cache-policy`, `x-upstream-id`; any other is dropped. So the cache affinity headers do not go: DIAL Core runs the affinity of the call back itself |
 | `DIAL_URL` is not set | `500`, "Internal server error"; nothing is called |
 | DIAL Core cannot be reached | `502`, "Failed to reach DIAL Core" |
-| any other request below `/openaiResponses` (`count_tokens`, another path, another method) | `404`, `{"type":"error","error":{"type":"not_found_error","message":"Unknown endpoint: <path>"}}` |
+| any other request below `/openaiResponses` (`count_tokens`, another path, another method) | `404`, `{"type":"error","error":{"type":"not_found_error","message":"Endpoint not supported"}}` |
 
 ### As a plugin of DIAL Core
 
@@ -49,7 +49,7 @@ passes the request to the plugin as it would to the service, at `/anthropic/v1/m
 up, and the call is checked, limited and charged as the request's. The body and the headers of the call are those of the
 service (the `model` is the deployment's, only the cache policy and the upstream pin go). Any other setting is a
 variable of the service, as for an adapter entry. A request the plugin cannot make a call for (the host refuses it) is
-answered `502`, "Failed to call DIAL Core"; the status DIAL Core answers with is relayed as for the service.
+answered `502`, "Failed to reach DIAL Core"; the status DIAL Core answers with is relayed as for the service.
 
 Everything below is the same translation, in the three ways of calling it; the answer to a failed call back is relayed as
 described in [Failures](#failures).

@@ -76,7 +76,7 @@ class OpenAiResponsesCasesTest {
                 vertx,
                 config,
                 "/compat/openai",
-                Targets.openai(config),
+                OpenAiTargets.openai(config),
                 client,
                 new AzureAd(azure, "scope"),
                 aws,

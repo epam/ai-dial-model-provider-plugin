@@ -194,7 +194,7 @@ class CompatRouterTest {
                     await(served.handle(request(HttpMethod.GET, "/openaiResponses/anthropic/v1/messages", null)));
             assertEquals(404, other.status());
             assertEquals(
-                    "{\"error\":{\"message\":\"Unknown endpoint: /anthropic/v1/messages\","
+                    "{\"error\":{\"message\":\"Endpoint not supported\","
                             + "\"type\":\"not_found_error\"},\"type\":\"error\"}\n",
                     body(other));
             for (String path : List.of("/openaiResponses", "/openaiResponsesX/anthropic/v1/messages")) {

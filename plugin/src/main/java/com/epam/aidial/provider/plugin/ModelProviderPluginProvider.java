@@ -81,8 +81,7 @@ public final class ModelProviderPluginProvider implements PluginProvider {
         PluginSettings settings = PluginSettings.of(node);
         Config config = Config.from(settings.variables(environment));
         if (settings.hasTranslator()) {
-            return new ModelProviderPlugin(
-                    vertx, "/" + settings.translator(), ModelProviders.createTranslator(vertx, config));
+            return new ModelProviderPlugin(vertx, "/" + settings.translator(), ModelProviders.createTranslator());
         }
         return new ModelProviderPlugin(vertx, "/compat/" + settings.adapter(), ModelProviders.create(vertx, config));
     }

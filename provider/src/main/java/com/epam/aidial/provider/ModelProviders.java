@@ -1,10 +1,11 @@
 package com.epam.aidial.provider;
 
 import com.epam.aidial.provider.anthropic.AnthropicRoutes;
-import com.epam.aidial.provider.anthropic.Targets;
+import com.epam.aidial.provider.anthropic.AnthropicTargets;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
+import com.epam.aidial.provider.core.HttpServerShim;
 import com.epam.aidial.provider.core.Routes;
 import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
@@ -12,10 +13,12 @@ import com.epam.aidial.provider.credentials.AzureTokens;
 import com.epam.aidial.provider.credentials.GoogleTokenSource;
 import com.epam.aidial.provider.credentials.GoogleTokens;
 import com.epam.aidial.provider.credentials.SessionTags;
+import com.epam.aidial.provider.openai.OpenAiTargets;
 import com.epam.aidial.provider.openai.ResponsesRoutes;
 import com.epam.aidial.provider.translation.ApiDispatch;
+import com.epam.aidial.provider.translation.CoreHandler;
+import com.epam.aidial.provider.translation.DialCoreHttp;
 import com.epam.aidial.provider.translation.MessagesOverResponses;
-import com.epam.aidial.provider.translation.TranslatorMount;
 import com.epam.aidial.provider.upstream.Limits;
 import com.epam.aidial.provider.upstream.Proxies;
 import com.epam.aidial.provider.upstream.UpstreamClient;
@@ -52,18 +55,17 @@ public final class ModelProviders {
         UpstreamClient bedrockClient = new UpstreamClient(vertx, proxies, config.bedrock());
 
         Routes openai = openaiMount(vertx, config, "/compat/openai", openaiClient, azure, google, aws, dial, now);
-        Routes vertexai = Routes.of(
-                new AnthropicRoutes("/compat/vertexai", Targets.vertexai(config), vertexaiClient, azure, google, now));
+        Routes vertexai = Routes.of(new AnthropicRoutes(
+                "/compat/vertexai", AnthropicTargets.vertexai(config), vertexaiClient, azure, google, now));
         Routes bedrock = Routes.of(new AnthropicRoutes(
                 "/compat/bedrock",
-                Targets.bedrock(config, aws, SessionTags.of(config, dial)),
+                AnthropicTargets.bedrock(config, aws, SessionTags.of(config, dial)),
                 bedrockClient,
                 azure,
                 google,
                 now));
 
-        UpstreamClient dialCoreClient = new UpstreamClient(vertx, proxies, Limits.uncapped(Duration.ofMinutes(10)));
-        List<UpstreamClient> clients = List.of(openaiClient, vertexaiClient, bedrockClient, dialCoreClient);
+        List<UpstreamClient> clients = List.of(openaiClient, vertexaiClient, bedrockClient);
         return new CompatRouter(
                 Map.of(
                         "/compat/openai",
@@ -73,27 +75,26 @@ public final class ModelProviders {
                         "/compat/bedrock",
                         bedrock,
                         TRANSLATOR_PREFIX,
-                        translatorMount(dialCoreClient, config)),
+                        MessagesOverResponses.withCoreUpstream(CoreHandler::handle)),
                 () -> close(vertx, clients, dial, aws));
     }
 
-    public static CompatRouter createTranslator(Vertx vertx, Config config) {
-        UpstreamClient dialCoreClient = dialCoreClient(vertx, config);
-        return new CompatRouter(
-                Map.of(TRANSLATOR_PREFIX, translatorMount(dialCoreClient, config)), dialCoreClient::close);
+    public static CompatRouter createTranslator() {
+        return new CompatRouter(Map.of(TRANSLATOR_PREFIX, MessagesOverResponses.withCoreUpstream(CoreHandler::handle)));
     }
 
-    /** What the translator calls DIAL Core back with: outside the mounts' caps, as {@link DialApi}'s calls are. */
-    private static UpstreamClient dialCoreClient(Vertx vertx, Config config) {
-        return new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofMinutes(10)));
+    /**
+     * The standalone server: its requests call DIAL Core back over HTTP (the {@code core} of the request), outside
+     * the mounts' caps, as {@link DialApi}'s calls are. The client of the calls closes with {@code vertx}.
+     */
+    public static HttpServerShim server(Vertx vertx, Config config) {
+        UpstreamClient dialCoreClient =
+                new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofMinutes(10)));
+        return new HttpServerShim(create(vertx, config), new DialCoreHttp(dialCoreClient, config.dialUrl()));
     }
 
     /** DIAL Core's translator contract: Core calls {@code <base URL>/anthropic/v1/messages}, and is called back. */
     public static final String TRANSLATOR_PREFIX = "/openaiResponses";
-
-    public static TranslatorMount translatorMount(UpstreamClient dialCoreClient, Config config) {
-        return new TranslatorMount(MessagesOverResponses.overDialCore(dialCoreClient, config.dialUrl()));
-    }
 
     /**
      * @param dial null without DIAL_URL
@@ -108,21 +109,13 @@ public final class ModelProviders {
             AwsCredentials aws,
             @Nullable DialApi dial,
             Clock now) {
-        ResponsesRoutes responses = new ResponsesRoutes(
-                vertx,
-                config,
-                prefix,
-                com.epam.aidial.provider.openai.Targets.openai(config),
-                client,
-                azure,
-                aws,
-                dial,
-                now);
+        ResponsesRoutes responses =
+                new ResponsesRoutes(vertx, config, prefix, OpenAiTargets.openai(config), client, azure, aws, dial, now);
         return Routes.of(
                 new ApiDispatch(
                         AnthropicRoutes.PATHS,
-                        new AnthropicRoutes(prefix, Targets.openai(), client, azure, google, now),
-                        new MessagesOverResponses(responses::create)),
+                        new AnthropicRoutes(prefix, AnthropicTargets.openai(), client, azure, google, now),
+                        MessagesOverResponses.withOwnUpstream(responses::create)),
                 responses);
     }
 

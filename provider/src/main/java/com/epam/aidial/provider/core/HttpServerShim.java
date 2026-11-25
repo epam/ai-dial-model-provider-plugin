@@ -28,11 +28,21 @@ public final class HttpServerShim implements io.vertx.core.Handler<HttpServerReq
     private static final io.vertx.core.Handler<Throwable> IGNORED = e -> {};
 
     private final Handler provider;
+    private final Handler core;
     private final AtomicInteger inFlight = new AtomicInteger();
     private volatile boolean draining;
 
+    /** For a provider that does not call DIAL Core back. */
     public HttpServerShim(Handler provider) {
+        this(provider, AdapterRequest.NO_CORE);
+    }
+
+    /**
+     * @param core DIAL Core's create operations for the requests served (see {@link AdapterRequest#core()})
+     */
+    public HttpServerShim(Handler provider, Handler core) {
         this.provider = provider;
+        this.core = core;
     }
 
     public int inFlight() {
@@ -108,7 +118,7 @@ public final class HttpServerShim implements io.vertx.core.Handler<HttpServerReq
 
         void dispatch(Buffer body) {
             AdapterRequest adapterRequest = new AdapterRequest(
-                    request.method(), request.path(), request.query(), request.headers(), body, aborted.future());
+                    request.method(), request.path(), request.query(), request.headers(), body, aborted.future(), core);
             Answers.call(provider, adapterRequest).onComplete(ar -> {
                 if (response.closed()) {
                     return; // the client is gone; the provider saw it through aborted

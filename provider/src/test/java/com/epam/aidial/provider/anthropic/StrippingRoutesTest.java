@@ -147,7 +147,7 @@ class StrippingRoutesTest {
                 fx.mock().url() + "/",
                 "ANTHROPIC_BASE_URL",
                 fx.mock().url()));
-        vertexMount = mount("/compat/vertexai", Targets.vertexai(vertexConfig), vertexConfig);
+        vertexMount = mount("/compat/vertexai", AnthropicTargets.vertexai(vertexConfig), vertexConfig);
         Config bedrockConfig = Config.from(Map.of(
                 "AWS_DEFAULT_REGION", "us-east-1",
                 "AWS_ACCESS_KEY_ID", "AKID",
@@ -157,12 +157,12 @@ class StrippingRoutesTest {
         AwsCredentials aws = new AwsCredentials(fx.vertx(), bedrockConfig);
         bedrockMount = mount(
                 "/compat/bedrock",
-                Targets.bedrock(
+                AnthropicTargets.bedrock(
                         bedrockConfig, aws, SessionTags.of(bedrockConfig, DialApi.from(fx.vertx(), bedrockConfig))),
                 bedrockConfig);
     }
 
-    private Routes mount(String prefix, Targets.Resolver resolver, Config config) {
+    private Routes mount(String prefix, AnthropicTargets.Resolver resolver, Config config) {
         return Routes.of(new AnthropicRoutes(
                 prefix,
                 resolver,

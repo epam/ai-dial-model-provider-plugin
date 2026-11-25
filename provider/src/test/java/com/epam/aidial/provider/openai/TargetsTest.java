@@ -48,7 +48,7 @@ class TargetsTest {
         vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
     }
 
-    private record Upstream(Targets.Resolver resolver, UpstreamAuth auth) {}
+    private record Upstream(OpenAiTargets.Resolver resolver, UpstreamAuth auth) {}
 
     private Upstream upstream(String... settings) {
         Map<String, String> s = new HashMap<>();
@@ -59,7 +59,7 @@ class TargetsTest {
         AwsCredentials aws = new AwsCredentials(
                 vertx, config, () -> StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIDCHAIN", "s")));
         return new Upstream(
-                Targets.openai(config),
+                OpenAiTargets.openai(config),
                 new UpstreamAuth(
                         config,
                         new AzureAd((scope, aborted) -> Future.succeededFuture("aad"), "scope"),

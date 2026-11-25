@@ -11,7 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
-public final class Targets {
+public final class OpenAiTargets {
 
     private static final String RESPONSES = "/responses";
 
@@ -22,7 +22,7 @@ public final class Targets {
     private static final Pattern AZURE_DEPLOYMENT_ENDPOINT = Pattern.compile("^(.+?)/openai/deployments/(.+)$");
     private static final Pattern AZURE_ENDPOINT = Pattern.compile("^(.+?)/openai$");
 
-    private Targets() {}
+    private OpenAiTargets() {}
 
     /** Throws {@link UpstreamRefusedException} or {@link InvalidRequestException} when the request makes no client. */
     public interface Resolver {

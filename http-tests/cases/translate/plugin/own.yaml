@@ -3,19 +3,19 @@
 name: "plugin: a host that cannot call is a 502"
 server: {env: {DIAL_URL: 'http://127.0.0.1:1'}}
 mocks: []
-expect: {status: 502, json: !replace {type: error, error: {type: api_error, message: Failed to call DIAL Core}}}
+expect: {status: 502, json: !replace {type: error, error: {type: api_error, message: Failed to reach DIAL Core}}}
 ---
 name: "plugin: count_tokens is an unknown endpoint"
 request: {path: /anthropic/v1/messages/count_tokens}
 mocks: []
-expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: 'Unknown endpoint: /anthropic/v1/messages/count_tokens'}}}
+expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: Endpoint not supported}}}
 ---
 name: "plugin: another path is an unknown endpoint"
 request: {path: /openai/v1/responses}
 mocks: []
-expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: 'Unknown endpoint: /openai/v1/responses'}}}
+expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: Endpoint not supported}}}
 ---
 name: "plugin: a method other than POST is an unknown endpoint"
 request: {method: GET, json: !delete }
 mocks: []
-expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: 'Unknown endpoint: /anthropic/v1/messages'}}}
+expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: Endpoint not supported}}}

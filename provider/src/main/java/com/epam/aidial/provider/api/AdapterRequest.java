@@ -15,8 +15,9 @@ import org.jspecify.annotations.Nullable;
  * @param query   the raw query string, without {@code ?}; {@code null} when the request has none
  * @param aborted completes when the caller goes away before the response has ended; a provider cancels the
  *                upstream call it made for the request
- * @param core    DIAL Core's create operations, called in the process of DIAL Core with the credentials of the
- *                request being served (the plugin API's host); null for a request that came over HTTP
+ * @param core    DIAL Core's create operations, for the translator that calls DIAL Core back: in the process of DIAL
+ *                Core with the credentials of the request being served for a plugin (the plugin API's host), over
+ *                HTTP for a service; {@link #NO_CORE} where there is none
  */
 public record AdapterRequest(
         HttpMethod method,
@@ -25,12 +26,15 @@ public record AdapterRequest(
         MultiMap headers,
         Buffer body,
         Future<Void> aborted,
-        @Nullable Handler core) {
+        Handler core) {
 
     public AdapterRequest(
             HttpMethod method, String path, String query, MultiMap headers, Buffer body, Future<Void> aborted) {
-        this(method, path, query, headers, body, aborted, null);
+        this(method, path, query, headers, body, aborted, NO_CORE);
     }
+
+    public static final Handler NO_CORE =
+            request -> Future.failedFuture(new IllegalStateException("the request has no DIAL Core to call"));
 
     public static final String ENDPOINT_HEADER = "X-Upstream-Endpoint";
 
@@ -94,6 +98,10 @@ public record AdapterRequest(
         } catch (IllegalArgumentException e) {
             return s;
         }
+    }
+
+    public AdapterRequest withHeaders(MultiMap newHeaders) {
+        return new AdapterRequest(method, path, query, newHeaders, body, aborted, core);
     }
 
     public AdapterRequest withPath(String newPath) {

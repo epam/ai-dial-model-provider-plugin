@@ -65,7 +65,7 @@ class ResponsesRoutesTest {
                 fx.vertx(),
                 config,
                 "/compat/openai",
-                Targets.openai(config),
+                OpenAiTargets.openai(config),
                 new UpstreamClient(fx.vertx(), config.proxies(), config.openai()),
                 new AzureAd((scope, aborted) -> Future.succeededFuture("aad-tok"), "scope"),
                 aws,

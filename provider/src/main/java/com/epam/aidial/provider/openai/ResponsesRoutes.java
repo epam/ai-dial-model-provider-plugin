@@ -31,7 +31,7 @@ public final class ResponsesRoutes implements Routes.Group {
 
     private final Vertx vertx;
     private final String prefix;
-    private final Targets.Resolver resolver;
+    private final OpenAiTargets.Resolver resolver;
     private final UpstreamClient client;
     private final UpstreamAuth auth;
     private final OpenAiErrors.Failures failures;
@@ -45,7 +45,7 @@ public final class ResponsesRoutes implements Routes.Group {
             Vertx vertx,
             Config config,
             String prefix,
-            Targets.Resolver resolver,
+            OpenAiTargets.Resolver resolver,
             UpstreamClient client,
             AzureAd azure,
             AwsCredentials aws,

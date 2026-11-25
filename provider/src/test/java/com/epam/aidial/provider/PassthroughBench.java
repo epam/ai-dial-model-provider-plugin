@@ -4,7 +4,7 @@ import static com.epam.aidial.provider.testing.MockUpstream.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.epam.aidial.provider.anthropic.AnthropicRoutes;
-import com.epam.aidial.provider.anthropic.Targets;
+import com.epam.aidial.provider.anthropic.AnthropicTargets;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.HttpServerShim;
@@ -99,21 +99,21 @@ class PassthroughBench {
                 vertx, config, () -> StaticCredentialsProvider.create(AwsBasicCredentials.create("AKID", "SECRET")));
         Routes vertexai = Routes.of(new AnthropicRoutes(
                 "/compat/vertexai",
-                Targets.vertexai(config),
+                AnthropicTargets.vertexai(config),
                 new UpstreamClient(vertx, config.proxies(), config.vertexai()),
                 azure,
                 google,
                 Clock.systemUTC()));
         Routes bedrock = Routes.of(new AnthropicRoutes(
                 "/compat/bedrock",
-                Targets.bedrock(config, aws, null),
+                AnthropicTargets.bedrock(config, aws, null),
                 new UpstreamClient(vertx, config.proxies(), config.bedrock()),
                 azure,
                 google,
                 Clock.systemUTC()));
         Routes openai = Routes.of(new AnthropicRoutes(
                 "/compat/openai",
-                Targets.openai(),
+                AnthropicTargets.openai(),
                 new UpstreamClient(vertx, config.proxies(), config.openai()),
                 azure,
                 google,

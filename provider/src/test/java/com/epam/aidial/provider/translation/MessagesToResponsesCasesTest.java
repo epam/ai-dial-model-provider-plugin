@@ -1,6 +1,7 @@
 package com.epam.aidial.provider.translation;
 
 import com.epam.aidial.provider.ModelProviders;
+import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
@@ -34,7 +35,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
  * Runs the cases of the suite {@code translate}: the Anthropic Messages API served for a Responses API upstream, in
  * the two ways the service wires it: on the openai mount ({@link ModelProviders#openaiMount}, the cases of
  * {@code translate/adapter}), and as a service of DIAL Core ({@code /openaiResponses}, {@link
- * ModelProviders#translatorMount}, those of {@code translate/service}, which call DIAL Core back).
+ * MessagesOverResponses#withCoreUpstream}, those of {@code translate/service}, which call DIAL Core back).
  *
  * <p>The stubs: {@code now_seconds}, the clock (the cache expiry); {@code azure_ad_token}, the Azure AD token every
  * call gets (without it, getting one fails with {@code azure_ad_error}, or "no Azure AD in these cases");
@@ -82,8 +83,9 @@ class MessagesToResponsesCasesTest {
         UpstreamClient dialCore = server.own(
                 new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofSeconds(30))),
                 UpstreamClient::close);
+        Handler core = new DialCoreHttp(dialCore, config.dialUrl());
         Handler service = new CompatRouter(
-                Map.of(ModelProviders.TRANSLATOR_PREFIX, ModelProviders.translatorMount(dialCore, config)));
+                Map.of(ModelProviders.TRANSLATOR_PREFIX, MessagesOverResponses.withCoreUpstream(CoreHandler::handle)));
         Handler openai = ModelProviders.openaiMount(
                 vertx,
                 config,
@@ -95,7 +97,14 @@ class MessagesToResponsesCasesTest {
                 dial,
                 Clock.fixed(Instant.ofEpochSecond(now), ZoneOffset.UTC));
         return request -> request.path().startsWith(ModelProviders.TRANSLATOR_PREFIX + "/")
-                ? service.handle(request)
+                ? service.handle(new AdapterRequest(
+                        request.method(),
+                        request.path(),
+                        request.query(),
+                        request.headers(),
+                        request.body(),
+                        request.aborted(),
+                        core))
                 : openai.handle(request);
     }
 }

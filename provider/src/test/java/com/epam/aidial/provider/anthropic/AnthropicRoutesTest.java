@@ -84,11 +84,11 @@ class AnthropicRoutesTest {
                 fx.mock().url() + "/",
                 "ANTHROPIC_BASE_URL",
                 fx.mock().url()));
-        return routes(Targets.vertexai(config), limits(cap, waitMillis));
+        return routes(AnthropicTargets.vertexai(config), limits(cap, waitMillis));
     }
 
     private Routes openai() {
-        return routes(Targets.openai(), limits(10, 10_000));
+        return routes(AnthropicTargets.openai(), limits(10, 10_000));
     }
 
     private static Limits limits(int cap, long waitMillis) {
@@ -96,7 +96,7 @@ class AnthropicRoutesTest {
                 cap, new Limits.PoolWait.Bounded(Duration.ofMillis(waitMillis)), Duration.ofMillis(600_000));
     }
 
-    private Routes routes(Targets.Resolver resolver, Limits limits) {
+    private Routes routes(AnthropicTargets.Resolver resolver, Limits limits) {
         UpstreamClient client =
                 new UpstreamClient(fx.vertx(), Config.from(Map.of()).proxies(), limits);
         AzureTokenSource source = (scope, aborted) -> azureFails
@@ -168,7 +168,7 @@ class AnthropicRoutesTest {
             if (c[0] != null) {
                 settings.put("GCP_DEFAULT_REGION", c[0]);
             }
-            Routes routes = routes(Targets.vertexai(Config.from(settings)), limits(10, 10_000));
+            Routes routes = routes(AnthropicTargets.vertexai(Config.from(settings)), limits(10, 10_000));
             fx.post(routes, "/anthropic/v1/messages", "{\"model\":\"m\",\"messages\":[]}", Map.of());
             assertEquals(
                     "/projects/p/locations/" + c[2] + "/publishers/anthropic/models/m:rawPredict",
@@ -666,7 +666,7 @@ class AnthropicRoutesTest {
 
     @Test
     void openaiTargets() throws Exception {
-        Targets.Resolver openai = Targets.openai();
+        AnthropicTargets.Resolver openai = AnthropicTargets.openai();
         Target.Foundry foundry = assertInstanceOf(
                 Target.Foundry.class,
                 openai.resolve(request(

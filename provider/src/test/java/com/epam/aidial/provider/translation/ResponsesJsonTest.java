@@ -52,13 +52,12 @@ class ResponsesJsonTest {
     @Test
     void streamEventIsClassifiedByItsType() {
         ResponseStreamEvent delta = ResponsesJson.parseEvent(
-                bytes(
-                        """
+                """
                 {"type":"response.output_text.delta","output_index":0,"content_index":0,"item_id":"i",
-                 "sequence_number":1,"delta":"Hel","logprobs":[]}"""));
+                 "sequence_number":1,"delta":"Hel","logprobs":[]}""");
         assertEquals("Hel", delta.outputTextDelta().orElseThrow().delta());
 
-        ResponseStreamEvent unknown = ResponsesJson.parseEvent(bytes("{\"type\":\"response.future.thing\",\"a\":1}"));
+        ResponseStreamEvent unknown = ResponsesJson.parseEvent("{\"type\":\"response.future.thing\",\"a\":1}");
         assertTrue(unknown._json().isPresent(), "an unknown type has only its JSON");
         assertFalse(unknown.isOutputTextDelta());
     }
@@ -66,7 +65,7 @@ class ResponsesJsonTest {
     @Test
     void mistypedEventIsClassifiedAndFailsWhereRead() {
         ResponseStreamEvent mistyped = ResponsesJson.parseEvent(
-                bytes("{\"type\":\"response.output_text.delta\",\"output_index\":\"zero\",\"delta\":\"x\"}"));
+                "{\"type\":\"response.output_text.delta\",\"output_index\":\"zero\",\"delta\":\"x\"}");
         assertTrue(mistyped.isOutputTextDelta());
         assertEquals("x", mistyped.outputTextDelta().orElseThrow().delta(), "what is read and fine");
         assertThrows(
@@ -78,7 +77,7 @@ class ResponsesJsonTest {
     void whatIsNotJsonIsAnUpstreamResponseException() {
         for (String json : new String[] {"", "{", "<html>", "{\"id\":\"r\"}x"}) {
             assertThrows(UpstreamResponseException.class, () -> ResponsesJson.parseResponse(bytes(json)), json);
-            assertThrows(UpstreamResponseException.class, () -> ResponsesJson.parseEvent(bytes(json)), json);
+            assertThrows(UpstreamResponseException.class, () -> ResponsesJson.parseEvent(json), json);
         }
     }
 

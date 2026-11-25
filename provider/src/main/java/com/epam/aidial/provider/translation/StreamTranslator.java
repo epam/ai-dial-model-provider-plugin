@@ -31,7 +31,6 @@ import com.openai.models.responses.ResponseReasoningTextDeltaEvent;
 import com.openai.models.responses.ResponseRefusalDeltaEvent;
 import com.openai.models.responses.ResponseStreamEvent;
 import com.openai.models.responses.ResponseTextDeltaEvent;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -92,7 +91,7 @@ final class StreamTranslator {
             return List.of();
         }
         try {
-            ResponseStreamEvent event = ResponsesJson.parseEvent(data.getBytes(StandardCharsets.UTF_8));
+            ResponseStreamEvent event = ResponsesJson.parseEvent(data);
             event.accept(new Events());
         } catch (UpstreamResponseException | OpenAIInvalidDataException e) {
             log.error("The Responses API stream holds what is not a Responses API event: {}", e.getMessage());

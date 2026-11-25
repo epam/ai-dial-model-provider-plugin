@@ -1,9 +1,9 @@
 package com.epam.aidial.provider.translation;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.openai.core.JsonField;
-import com.openai.core.JsonMissing;
 import com.openai.core.JsonValue;
 import com.openai.core.ObjectMappers;
 import com.openai.models.responses.Response;
@@ -21,19 +21,32 @@ import org.jspecify.annotations.Nullable;
 public final class ResponsesJson {
 
     private static final JsonMapper MAPPER = ObjectMappers.jsonMapper();
+    // Data after the value is an error, as the mapper alone does not take it
+    private static final ObjectReader RESPONSE =
+            MAPPER.readerFor(Response.class).with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    private static final ObjectReader EVENT =
+            MAPPER.readerFor(ResponseStreamEvent.class).with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     private ResponsesJson() {}
 
     public static Response parseResponse(byte[] json) {
-        return read(json, Response.class);
+        try {
+            return RESPONSE.readValue(json);
+        } catch (IOException e) {
+            throw unreadable(Response.class, e);
+        }
     }
 
     /**
      * One event of the stream (the data of an SSE event). An event of a type the SDK does not know has no typed form,
      * only {@code _json()}; so has one that is mistyped, until a getter throws.
      */
-    public static ResponseStreamEvent parseEvent(byte[] json) {
-        return read(json, ResponseStreamEvent.class);
+    public static ResponseStreamEvent parseEvent(String json) {
+        try {
+            return EVENT.readValue(json);
+        } catch (IOException e) {
+            throw unreadable(ResponseStreamEvent.class, e);
+        }
     }
 
     /**
@@ -53,15 +66,8 @@ public final class ResponsesJson {
         return value;
     }
 
-    /** Data after the value is an error, as the mapper alone does not take it. */
-    private static <T> T read(byte[] json, Class<T> type) {
-        try {
-            return MAPPER.readerFor(type)
-                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-                    .readValue(json);
-        } catch (IOException e) {
-            throw new UpstreamResponseException("not a " + type.getSimpleName() + ": " + SdkJson.describe(e), e);
-        }
+    private static UpstreamResponseException unreadable(Class<?> type, IOException e) {
+        return new UpstreamResponseException("not a " + type.getSimpleName() + ": " + SdkJson.describe(e), e);
     }
 
     /**
@@ -70,26 +76,6 @@ public final class ResponsesJson {
     public static String requestJson(ResponseCreateParams.Builder request, boolean stream) {
         request.putAdditionalBodyProperty("stream", JsonValue.from(stream));
         return write(request.build()._body());
-    }
-
-    /**
-     * A request as it was written by {@link #requestJson}.
-     *
-     * @throws IllegalArgumentException if it is not a Responses request
-     */
-    public static ResponseCreateParams.Body parseRequest(byte[] json) {
-        try {
-            return MAPPER.readValue(json, ResponseCreateParams.Body.class);
-        } catch (IOException e) {
-            throw new IllegalArgumentException("not a Responses request: " + SdkJson.describe(e), e);
-        }
-    }
-
-    /** {@code stream} is not a field of the model: it is one of its additional properties. */
-    public static boolean stream(ResponseCreateParams.Body request) {
-        return field(request._allProperties().getOrDefault("stream", JsonMissing.of()))
-                .asBoolean()
-                .orElse(false);
     }
 
     public static String write(Object model) {

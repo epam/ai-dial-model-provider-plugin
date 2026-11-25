@@ -48,17 +48,28 @@ public final class MessagesOverResponses implements ModelProvider {
 
     private final ModelProvider upstream;
 
+    /**
+     * Whether the upstream is DIAL Core, which routes the Responses API by the model: the call then names the
+     * deployment, where an upstream of its own gets the model of the client's request.
+     */
+    private final boolean callsCore;
+
     /** Served through its own client, which is {@code ModelProviders}' to close. */
     public static MessagesOverResponses overDialCore(UpstreamClient client, @Nullable String dialUrl) {
         ModelProvider http = new DialCoreUpstream(client, dialUrl);
         ModelProvider host = new HostUpstream();
         // A request that came through the host of a plugin calls DIAL Core through it: in process, with its credentials
         return new MessagesOverResponses(
-                request -> request.core() != null ? host.handle(request) : http.handle(request));
+                request -> request.core() != null ? host.handle(request) : http.handle(request), true);
     }
 
     public MessagesOverResponses(ModelProvider upstream) {
+        this(upstream, false);
+    }
+
+    private MessagesOverResponses(ModelProvider upstream, boolean callsCore) {
         this.upstream = upstream;
+        this.callsCore = callsCore;
     }
 
     @Override
@@ -86,9 +97,15 @@ public final class MessagesOverResponses implements ModelProvider {
             log.error("The request has no {} header", DEPLOYMENT_HEADER);
             return Future.succeededFuture(internalError());
         }
+        if (callsCore) {
+            translated.request().model(deployment);
+        }
         AdapterRequest call = upstreamRequest(
                 request, ResponsesJson.requestJson(translated.request(), streaming), translated.cachePaths());
         return Answers.call(upstream, call)
+                .compose(answer -> streaming && UpstreamClient.UpstreamResponse.isSuccess(answer.status())
+                        ? Future.succeededFuture(answer)
+                        : Bodies.whole(answer))
                 .map(answer -> streaming
                         ? stream(answer, deployment, names, translated.cachePaths())
                         : answer(answer, deployment, names, translated.cachePaths()))

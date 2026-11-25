@@ -1,13 +1,8 @@
 package com.epam.aidial.provider.translation;
 
-import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
-import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.json.Json;
-import com.openai.models.responses.ResponseCreateParams;
 import io.vertx.core.MultiMap;
-import io.vertx.core.buffer.Buffer;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -15,27 +10,13 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What the Responses call back to DIAL Core is made of, however it is sent (over HTTP, or through the host of a
- * plugin): DIAL Core routes the Responses API by the model, so the {@code model} of the body is the deployment's name,
- * and of the headers only those DIAL Core reads go: the key, the cache policy and the upstream pin.
+ * plugin): of the headers only those DIAL Core reads go: the key, the cache policy and the upstream pin.
  */
 final class CoreCallback {
 
     private static final Set<String> FORWARDED_HEADERS = Set.of("api-key", "x-dial-cache-policy", "x-upstream-id");
 
     private CoreCallback() {}
-
-    static Buffer body(AdapterRequest request) {
-        ResponseCreateParams.Body translated = ResponsesJson.parseRequest(Buffers.array(request.body()));
-        String deployment = request.headers().get(MessagesOverResponses.DEPLOYMENT_HEADER);
-        ResponseCreateParams.Body body = deployment == null
-                ? translated
-                : translated.toBuilder().model(deployment).build();
-        return Buffer.buffer(ResponsesJson.write(body).getBytes(StandardCharsets.UTF_8));
-    }
-
-    static boolean streams(Buffer body) {
-        return ResponsesJson.stream(ResponsesJson.parseRequest(Buffers.array(body)));
-    }
 
     static MultiMap headers(MultiMap request) {
         MultiMap headers = MultiMap.caseInsensitiveMultiMap().set("Content-Type", "application/json");

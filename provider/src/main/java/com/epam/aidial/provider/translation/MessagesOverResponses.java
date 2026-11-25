@@ -232,7 +232,13 @@ public final class MessagesOverResponses implements Handler {
             }
         }
         return new AdapterRequest(
-                HttpMethod.POST, RESPONSES_PATH, null, headers, Buffer.buffer(json), request.aborted(), request.core());
+                request.method(),
+                RESPONSES_PATH,
+                request.query(),
+                headers,
+                Buffer.buffer(json),
+                request.aborted(),
+                request.core());
     }
 
     /** Those of the upstream that describe its body, or the cache of its coordinates, are not the client's. */

@@ -20,10 +20,10 @@ mocks:
       output: !replace
       - {type: message, id: m1, role: assistant, status: weird, phase: {a: 1}, content: [{type: output_text, text: Hello, annotations: [], logprobs: nope}]}
 ---
-name: {{ (mode ~ ": " ~ "item without a type is not an item") | tojson }}
+name: {{ (mode ~ ": " ~ "item without a type is dropped") | tojson }}
 mocks: [{response: {json: {output: !replace [{id: m1}]}}}]
-expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: Internal server error}}}
+expect: {json: {content: !replace [{type: text, text: '', citations: null}]}}
 ---
-name: {{ (mode ~ ": " ~ "content part without a type is not a part") | tojson }}
+name: {{ (mode ~ ": " ~ "content part without a type is dropped") | tojson }}
 mocks: [{response: {json: {output: !replace [{type: message, id: m1, role: assistant, status: completed, content: [{text: Hello}]}]}}}]
-expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: Internal server error}}}
+expect: {json: {content: !replace [{type: text, text: '', citations: null}]}}

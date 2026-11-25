@@ -1,17 +1,17 @@
 package com.epam.aidial.provider.translation;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.openai.core.JsonField;
+import com.openai.core.JsonMissing;
 import com.openai.core.JsonValue;
 import com.openai.core.ObjectMappers;
-import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseStreamEvent;
 import java.io.IOException;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The OpenAI SDK's models behind one small door, as {@link AnthropicJson} is the Anthropic SDK's. What the upstream
@@ -36,17 +36,16 @@ public final class ResponsesJson {
         return read(json, ResponseStreamEvent.class);
     }
 
-    public static Optional<String> type(Optional<JsonValue> raw) {
-        return raw.flatMap(value -> field(value).asObject())
-                .flatMap(object -> Optional.ofNullable(object.get("type")))
-                .flatMap(type -> field(type).asString());
-    }
-
     /**
-     * @throws OpenAIInvalidDataException if there is none
+     * The {@code type} as sent of an item, part or event that the SDK has no variant for, which is given as raw JSON;
+     * {@code (none)} if there is none, as for {@link AnthropicJson#typeName}.
      */
-    public static String requiredType(Optional<JsonValue> raw, String what) {
-        return type(raw).orElseThrow(() -> new OpenAIInvalidDataException(what + " has no type"));
+    public static String unknownType(@Nullable JsonValue json) {
+        return Optional.ofNullable(json)
+                .flatMap(value -> field(value).asObject())
+                .flatMap(object -> Optional.ofNullable(object.get("type")))
+                .flatMap(type -> field(type).asString())
+                .orElse("(none)");
     }
 
     /** {@link JsonValue} extends the raw {@code JsonField}: through this its accessors keep their types. */
@@ -61,12 +60,8 @@ public final class ResponsesJson {
                     .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readValue(json);
         } catch (IOException e) {
-            throw new UpstreamResponseException("not a " + type.getSimpleName() + ": " + describe(e), e);
+            throw new UpstreamResponseException("not a " + type.getSimpleName() + ": " + SdkJson.describe(e), e);
         }
-    }
-
-    private static String describe(IOException e) {
-        return e instanceof JsonProcessingException p ? p.getOriginalMessage() : e.toString();
     }
 
     /**
@@ -86,26 +81,19 @@ public final class ResponsesJson {
         try {
             return MAPPER.readValue(json, ResponseCreateParams.Body.class);
         } catch (IOException e) {
-            throw new IllegalArgumentException("not a Responses request: " + describe(e), e);
+            throw new IllegalArgumentException("not a Responses request: " + SdkJson.describe(e), e);
         }
     }
 
-    /** Whether the request asks for a stream: {@code stream} is one of its additional properties. */
-    public static boolean streams(ResponseCreateParams.Body request) {
-        return JsonValue.from(true)
-                .equals(ResponseCreateParams.builder()
-                        .body(request)
-                        .build()
-                        ._additionalBodyProperties()
-                        .get("stream"));
+    /** {@code stream} is not a field of the model: it is one of its additional properties. */
+    public static boolean stream(ResponseCreateParams.Body request) {
+        return field(request._allProperties().getOrDefault("stream", JsonMissing.of()))
+                .asBoolean()
+                .orElse(false);
     }
 
     public static String write(Object model) {
-        try {
-            return MAPPER.writeValueAsString(model);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("cannot write " + model.getClass().getSimpleName(), e);
-        }
+        return SdkJson.write(MAPPER, model);
     }
 
     /**

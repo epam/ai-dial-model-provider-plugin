@@ -209,7 +209,7 @@ final class StreamTranslator {
 
         @Override
         public Void unknown(com.openai.core.JsonValue json) {
-            dropped(ResponsesJson.requiredType(Optional.ofNullable(json), "event"));
+            dropped(ResponsesJson.unknownType(json));
             return null;
         }
     }
@@ -367,9 +367,7 @@ final class StreamTranslator {
 
             @Override
             public Void unknown(com.openai.core.JsonValue json) {
-                log.warn(
-                        "Dropping an unsupported Responses API output item: {}",
-                        ResponsesJson.type(Optional.ofNullable(json)).orElse("(none)"));
+                log.warn("Dropping an unsupported Responses API output item: {}", ResponsesJson.unknownType(json));
                 return null;
             }
         });

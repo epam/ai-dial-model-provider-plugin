@@ -28,7 +28,7 @@ public final class AnthropicJson {
         try {
             return REQUEST.readValue(json);
         } catch (IOException e) {
-            throw new InvalidRequestException("The request body is not valid JSON: " + describe(e));
+            throw new InvalidRequestException("The request body is not valid JSON: " + SdkJson.describe(e));
         }
     }
 
@@ -114,10 +114,6 @@ public final class AnthropicJson {
         return value;
     }
 
-    private static String describe(IOException e) {
-        return e instanceof JsonProcessingException p ? p.getOriginalMessage() : String.valueOf(e.getMessage());
-    }
-
     /**
      * The effort as sent: an effort of a newer API is a value the model's enum has no constant for, but it keeps the
      * string.
@@ -127,10 +123,6 @@ public final class AnthropicJson {
     }
 
     public static String write(Object model) {
-        try {
-            return MAPPER.writeValueAsString(model);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("cannot write " + model.getClass().getSimpleName(), e);
-        }
+        return SdkJson.write(MAPPER, model);
     }
 }

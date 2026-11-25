@@ -34,7 +34,7 @@ final class CoreCallback {
     }
 
     static boolean streams(Buffer body) {
-        return ResponsesJson.streams(ResponsesJson.parseRequest(Buffers.array(body)));
+        return ResponsesJson.stream(ResponsesJson.parseRequest(Buffers.array(body)));
     }
 
     static MultiMap headers(MultiMap request) {

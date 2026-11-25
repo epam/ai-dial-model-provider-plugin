@@ -34,8 +34,8 @@ import org.slf4j.LoggerFactory;
  * does not say is null, as the SDK has it (the {@code container}, the {@code stop_sequence}, the {@code usage}'s {@code
  * service_tier}, ...). Pure.
  *
- * <p>Items and parts are told apart by the SDK's visitors. A type the translator does not handle is dropped, with a
- * warning; one that has no type is not a Responses API item.
+ * <p>Items and parts are told apart by the SDK's visitors. One of a type the translator does not handle, or of none,
+ * is dropped, with a warning.
  */
 final class ResponseTranslator {
 
@@ -155,9 +155,7 @@ final class ResponseTranslator {
         /** Any other item, which the SDK hands here too when it has no use for it. */
         @Override
         public Void unknown(com.openai.core.JsonValue json) {
-            log.warn(
-                    "Dropping an unsupported Responses API output item: {}",
-                    ResponsesJson.requiredType(Optional.ofNullable(json), "output item"));
+            log.warn("Dropping an unsupported Responses API output item: {}", ResponsesJson.unknownType(json));
             return null;
         }
     }
@@ -189,9 +187,7 @@ final class ResponseTranslator {
 
         @Override
         public Void unknown(com.openai.core.JsonValue json) {
-            log.warn(
-                    "Dropping an unsupported Responses API content part: {}",
-                    ResponsesJson.requiredType(Optional.ofNullable(json), "output content part"));
+            log.warn("Dropping an unsupported Responses API content part: {}", ResponsesJson.unknownType(json));
             return null;
         }
     }

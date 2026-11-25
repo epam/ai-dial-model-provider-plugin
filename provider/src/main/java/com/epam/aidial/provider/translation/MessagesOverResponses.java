@@ -12,6 +12,7 @@ import com.epam.aidial.provider.core.Answers;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.json.Json;
 import com.epam.aidial.provider.upstream.AdapterErrors;
+import com.epam.aidial.provider.upstream.ClientGoneException;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.responses.Response;
@@ -91,7 +92,7 @@ public final class MessagesOverResponses implements ModelProvider {
                 .map(answer -> streaming
                         ? stream(answer, deployment, names, translated.cachePaths())
                         : answer(answer, deployment, names, translated.cachePaths()))
-                .recover(e -> request.aborted().isComplete() ? Future.failedFuture(e) : failed(e));
+                .recover(ClientGoneException.unlessGone(request.aborted(), MessagesOverResponses::failed));
     }
 
     private static Future<AdapterResponse> failed(Throwable e) {

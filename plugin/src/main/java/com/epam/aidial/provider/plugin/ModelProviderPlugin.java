@@ -13,6 +13,7 @@ import com.epam.aidial.provider.core.Answers;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.HttpServerShim;
+import com.epam.aidial.provider.upstream.ClientGoneException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Context;
@@ -59,14 +60,10 @@ final class ModelProviderPlugin implements Plugin {
                 aborted.future(),
                 coreCall(host, aborted.future()));
         return Answers.call(router, adapterRequest)
-                .recover(e -> {
-                    if (aborted.future().isComplete()) {
-                        // DIAL Core stopped waiting (ClientGoneException): a failed answer ends its request quietly, as
-                        // the standalone server writes nothing to a client that has gone
-                        return Future.failedFuture(e);
-                    }
-                    return Future.succeededFuture(Answers.internalError(adapterRequest.path(), e));
-                })
+                // DIAL Core stopped waiting: a failed answer ends its request quietly, as the standalone server writes
+                // nothing to a client that has gone
+                .recover(ClientGoneException.unlessGone(
+                        aborted.future(), e -> Future.succeededFuture(Answers.internalError(adapterRequest.path(), e))))
                 .map(response -> new Answer(context, response, aborted));
     }
 

@@ -48,13 +48,10 @@ final class DialCoreUpstream implements ModelProvider {
                         body,
                         request.aborted())
                 .compose(response -> answer(response, stream))
-                .recover(e -> {
-                    if (e instanceof ClientGoneException) {
-                        return Future.failedFuture(e);
-                    }
+                .recover(ClientGoneException.unlessGone(request.aborted(), e -> {
                     log.error("Failed to reach DIAL Core: {}", e.toString());
                     return Future.succeededFuture(CoreCallback.error(502, "Failed to reach DIAL Core"));
-                });
+                }));
     }
 
     private static Future<AdapterResponse> answer(UpstreamClient.UpstreamResponse response, boolean stream) {

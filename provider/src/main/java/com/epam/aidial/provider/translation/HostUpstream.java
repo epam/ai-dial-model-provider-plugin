@@ -42,13 +42,10 @@ final class HostUpstream implements ModelProvider {
         return core.handle(call)
                 .compose(
                         answer -> stream && answer.status() / 100 == 2 ? Future.succeededFuture(answer) : whole(answer))
-                .recover(e -> {
-                    if (e instanceof ClientGoneException || request.aborted().isComplete()) {
-                        return Future.failedFuture(e);
-                    }
+                .recover(ClientGoneException.unlessGone(request.aborted(), e -> {
                     log.error("Failed to call DIAL Core: {}", e.toString());
                     return Future.succeededFuture(CoreCallback.error(502, "Failed to call DIAL Core"));
-                });
+                }));
     }
 
     private static Future<AdapterResponse> whole(AdapterResponse answer) {

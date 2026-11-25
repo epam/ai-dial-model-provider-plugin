@@ -120,15 +120,12 @@ public final class SessionTags {
         }
         return dial.get(dial.userInfoUrl(), key, DialApi.Retry.TRANSPORT, aborted)
                 .map(body -> parseUserInfo(body.getBytes()))
-                .recover(e -> {
-                    if (e instanceof ClientGoneException || aborted.isComplete()) {
-                        return Future.failedFuture(new ClientGoneException());
-                    }
+                .recover(ClientGoneException.unlessGone(aborted, e -> {
                     log.atWarn()
                             .addKeyValue("error", e.getMessage())
                             .log("Skipping UserInfo AWS STS session tags; failed to fetch DIAL user info");
                     return Future.succeededFuture();
-                });
+                }));
     }
 
     private List<Tagged> tagged(@Nullable String model, @Nullable Map<String, Object> user) {

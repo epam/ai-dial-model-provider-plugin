@@ -150,18 +150,12 @@ final class BedrockAuth {
 
     /** A client that has gone gets {@link ClientGoneException}, which writes nothing, not the refusal. */
     private static <T> Future<T> refused(Future<Void> aborted, String message) {
-        if (aborted.isComplete()) {
-            return Future.failedFuture(new ClientGoneException());
-        }
-        return Future.failedFuture(UpstreamRefusedException.misconfigured(message));
+        return Future.failedFuture(ClientGoneException.of(UpstreamRefusedException.misconfigured(message), aborted));
     }
 
     /** The token generator's failure has no handler of its own: it answers as a plain-text 500. */
     private static <T> Future<T> tokenFailed(Future<Void> aborted, Throwable cause) {
-        if (cause instanceof ClientGoneException) {
-            return Future.failedFuture(cause);
-        }
-        if (aborted.isComplete()) {
+        if (ClientGoneException.isGone(cause, aborted)) {
             return Future.failedFuture(new ClientGoneException());
         }
         return Future.failedFuture(new CredentialsUnavailableException(Source.BEDROCK_TOKEN, cause));

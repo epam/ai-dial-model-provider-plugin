@@ -85,7 +85,7 @@ public final class DialApi {
                         e -> Future.succeededFuture(new Answer.Failed(e)))
                 .compose(answer -> {
                     Throwable error = answer instanceof Answer.Failed f ? f.error() : null;
-                    if (error instanceof ClientGoneException || aborted.isComplete()) {
+                    if (ClientGoneException.isGone(error, aborted)) {
                         return Future.failedFuture(new ClientGoneException());
                     }
                     if (error instanceof IllegalArgumentException) {

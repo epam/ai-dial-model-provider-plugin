@@ -13,6 +13,7 @@ import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseFunctionWebSearch;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
+import com.openai.models.responses.ResponseOutputRefusal;
 import com.openai.models.responses.ResponseOutputText;
 import com.openai.models.responses.ResponseReasoningItem;
 import com.openai.models.responses.ResponseStatus;
@@ -32,9 +33,8 @@ import org.slf4j.LoggerFactory;
  * does not say is null, as the SDK has it (the {@code container}, the {@code stop_sequence}, the {@code usage}'s {@code
  * service_tier}, ...). Pure.
  *
- * <p>Items and parts are told by their {@code type} as sent: the SDK's union takes an item that is none of its types
- * for the one it resembles most. A type the translator does not know is dropped, with a warning; one that has no type
- * is not a Responses API item.
+ * <p>Items and parts are told apart by the SDK's visitors. A type the translator does not handle is dropped, with a
+ * warning; one that has no type is not a Responses API item.
  */
 final class ResponseTranslator {
 
@@ -53,32 +53,15 @@ final class ResponseTranslator {
                 .orElse(false)) {
             throw failure(response);
         }
-        List<ContentBlock> content = new ArrayList<>();
-        boolean hasToolCall = false;
-        boolean isRefusal = false;
-        Set<String> seenUrls = new HashSet<>();
-        for (ResponseOutputItem item : response.output()) {
-            String type = ResponsesJson.requiredType(item._json(), "output item");
-            switch (type) {
-                case "reasoning" ->
-                    item.reasoning().flatMap(ResponseTranslator::thinkingBlock).ifPresent(content::add);
-                case "message" -> {
-                    ResponseOutputMessage message = item.message().orElseThrow();
-                    isRefusal |= messageBlocks(message, seenUrls, content);
-                }
-                case "function_call" -> {
-                    hasToolCall = true;
-                    content.add(toolUse(item.functionCall().orElseThrow(), names));
-                }
-                default -> log.warn("Dropping an unsupported Responses API output item: {}", type);
-            }
-        }
+        OutputItems items = new OutputItems(names);
+        response.output().forEach(item -> item.accept(items));
+        List<ContentBlock> content = items.content;
         if (content.isEmpty()) {
             content.add(Blocks.text(""));
         }
         return messageBuilder(response.id(), model)
                 .content(content)
-                .stopReason(stopReason(incompleteReason(response), hasToolCall, isRefusal))
+                .stopReason(stopReason(incompleteReason(response), items.hasToolCall, items.isRefusal))
                 .usage(usage(response))
                 .build();
     }
@@ -135,42 +118,96 @@ final class ResponseTranslator {
         return signature.isEmpty() ? Optional.empty() : Optional.of(Blocks.redactedThinking(signature));
     }
 
-    /** The blocks of a message; whether it holds a refusal. */
-    private static boolean messageBlocks(
-            ResponseOutputMessage message, Set<String> seenUrls, List<ContentBlock> content) {
-        boolean isRefusal = false;
-        for (ResponseOutputMessage.Content part : message.content()) {
-            String type = ResponsesJson.requiredType(part._json(), "output content part");
-            switch (type) {
-                case "output_text" -> {
-                    ResponseOutputText text = part.outputText().orElseThrow();
-                    content.add(Blocks.text(text.text()));
-                    content.addAll(WebSearchBlocks.of(newCitations(text, seenUrls)));
-                }
-                case "refusal" -> {
-                    isRefusal = true;
-                    content.add(Blocks.text(part.refusal().orElseThrow().refusal()));
-                }
-                default -> log.warn("Dropping an unsupported Responses API content part: {}", type);
-            }
+    /** The items of the output that become blocks of the message. */
+    private static final class OutputItems implements ResponseOutputItem.Visitor<Void> {
+
+        final List<ContentBlock> content = new ArrayList<>();
+        boolean hasToolCall;
+        boolean isRefusal;
+        private final Set<String> seenUrls = new HashSet<>();
+        private final ToolNames names;
+
+        OutputItems(ToolNames names) {
+            this.names = names;
         }
-        return isRefusal;
+
+        @Override
+        public Void visitReasoning(ResponseReasoningItem reasoning) {
+            thinkingBlock(reasoning).ifPresent(content::add);
+            return null;
+        }
+
+        @Override
+        public Void visitMessage(ResponseOutputMessage message) {
+            MessageParts parts = new MessageParts(seenUrls, content);
+            message.content().forEach(part -> part.accept(parts));
+            isRefusal |= parts.isRefusal;
+            return null;
+        }
+
+        @Override
+        public Void visitFunctionCall(ResponseFunctionToolCall call) {
+            hasToolCall = true;
+            content.add(toolUse(call, names));
+            return null;
+        }
+
+        /** Any other item, which the SDK hands here too when it has no use for it. */
+        @Override
+        public Void unknown(com.openai.core.JsonValue json) {
+            log.warn(
+                    "Dropping an unsupported Responses API output item: {}",
+                    ResponsesJson.requiredType(Optional.ofNullable(json), "output item"));
+            return null;
+        }
+    }
+
+    /** The blocks of a message; whether it holds a refusal. */
+    private static final class MessageParts implements ResponseOutputMessage.Content.Visitor<Void> {
+
+        boolean isRefusal;
+        private final Set<String> seenUrls;
+        private final List<ContentBlock> content;
+
+        MessageParts(Set<String> seenUrls, List<ContentBlock> content) {
+            this.seenUrls = seenUrls;
+            this.content = content;
+        }
+
+        @Override
+        public Void visitOutputText(ResponseOutputText text) {
+            content.add(Blocks.text(text.text()));
+            content.addAll(WebSearchBlocks.of(newCitations(text, seenUrls)));
+            return null;
+        }
+
+        @Override
+        public Void visitRefusal(ResponseOutputRefusal refusal) {
+            isRefusal = true;
+            content.add(Blocks.text(refusal.refusal()));
+            return null;
+        }
+
+        @Override
+        public Void unknown(com.openai.core.JsonValue json) {
+            log.warn(
+                    "Dropping an unsupported Responses API content part: {}",
+                    ResponsesJson.requiredType(Optional.ofNullable(json), "output content part"));
+            return null;
+        }
     }
 
     /** Whether a message holds a refusal. */
     static boolean hasRefusal(ResponseOutputMessage message) {
-        return message.content().stream().anyMatch(part -> "refusal"
-                .equals(ResponsesJson.type(part._json()).orElse("")));
+        return message.content().stream().anyMatch(ResponseOutputMessage.Content::isRefusal);
     }
 
     /** The web search blocks for the URLs a finished message cites for the first time. */
     static List<ContentBlock> citationBlocks(ResponseOutputMessage message, Set<String> seenUrls) {
         List<WebSearchBlocks.Citation> citations = new ArrayList<>();
-        for (ResponseOutputMessage.Content part : message.content()) {
-            if ("output_text".equals(ResponsesJson.type(part._json()).orElse(""))) {
-                citations.addAll(newCitations(part.outputText().orElseThrow(), seenUrls));
-            }
-        }
+        message.content().stream()
+                .flatMap(part -> part.outputText().stream())
+                .forEach(text -> citations.addAll(newCitations(text, seenUrls)));
         return WebSearchBlocks.of(citations);
     }
 
@@ -273,10 +310,10 @@ final class ResponseTranslator {
         long searches = 0;
         long fetches = 0;
         for (ResponseOutputItem item : output) {
-            if (!"web_search_call".equals(ResponsesJson.type(item._json()).orElse(""))) {
+            if (!item.isWebSearchCall()) {
                 continue;
             }
-            ResponseFunctionWebSearch call = item.webSearchCall().orElseThrow();
+            ResponseFunctionWebSearch call = item.asWebSearchCall();
             Optional<ResponseFunctionWebSearch.Action> action = ResponsesJson.object(call._action(), "action");
             if (action.isPresent() && action.get().search().isPresent()) {
                 searches++;

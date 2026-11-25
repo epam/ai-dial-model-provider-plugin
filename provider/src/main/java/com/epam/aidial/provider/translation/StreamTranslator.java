@@ -14,10 +14,23 @@ import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.Usage;
 import com.openai.errors.OpenAIInvalidDataException;
 import com.openai.models.responses.Response;
+import com.openai.models.responses.ResponseCompletedEvent;
+import com.openai.models.responses.ResponseCreatedEvent;
+import com.openai.models.responses.ResponseErrorEvent;
+import com.openai.models.responses.ResponseFailedEvent;
+import com.openai.models.responses.ResponseFunctionCallArgumentsDeltaEvent;
+import com.openai.models.responses.ResponseFunctionToolCall;
+import com.openai.models.responses.ResponseIncompleteEvent;
 import com.openai.models.responses.ResponseOutputItem;
+import com.openai.models.responses.ResponseOutputItemAddedEvent;
+import com.openai.models.responses.ResponseOutputItemDoneEvent;
 import com.openai.models.responses.ResponseOutputMessage;
 import com.openai.models.responses.ResponseReasoningItem;
+import com.openai.models.responses.ResponseReasoningSummaryTextDeltaEvent;
+import com.openai.models.responses.ResponseReasoningTextDeltaEvent;
+import com.openai.models.responses.ResponseRefusalDeltaEvent;
 import com.openai.models.responses.ResponseStreamEvent;
+import com.openai.models.responses.ResponseTextDeltaEvent;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -77,7 +90,7 @@ final class StreamTranslator {
         List<String> out = new ArrayList<>();
         try {
             ResponseStreamEvent event = ResponsesJson.parseEvent(data.getBytes(StandardCharsets.UTF_8));
-            handle(ResponsesJson.requiredType(event._json(), "event"), event, out);
+            event.accept(new Events(out));
         } catch (UpstreamResponseException | OpenAIInvalidDataException e) {
             log.error("The Responses API stream holds what is not a Responses API event: {}", e.getMessage());
             error(500, "Internal server error", out);
@@ -108,44 +121,96 @@ final class StreamTranslator {
         return out;
     }
 
-    private void handle(String type, ResponseStreamEvent event, List<String> out) {
-        switch (type) {
-            case "response.created" -> {
-                messageId = event.created().orElseThrow().response().id();
-                start(out);
-            }
-            case "response.output_item.added" -> itemAdded(event, out);
-            case "response.output_text.delta" -> {
-                var delta = event.outputTextDelta().orElseThrow();
-                textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta(), out);
-            }
-            case "response.refusal.delta" -> {
-                var delta = event.refusalDelta().orElseThrow();
-                textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta(), out);
-            }
-            case "response.function_call_arguments.delta" -> argumentsDelta(event, out);
-            case "response.reasoning_summary_text.delta" -> {
-                var delta = event.reasoningSummaryTextDelta().orElseThrow();
-                thinkingDelta(delta.outputIndex(), "summary:" + delta.summaryIndex(), delta.delta(), out);
-            }
-            case "response.reasoning_text.delta" -> {
-                var delta = event.reasoningTextDelta().orElseThrow();
-                thinkingDelta(delta.outputIndex(), "content:" + delta.contentIndex(), delta.delta(), out);
-            }
-            case "response.output_item.done" -> itemDone(event, out);
-            case "response.completed" -> finish(event.completed().orElseThrow().response(), out);
-            case "response.incomplete" ->
-                finish(event.incomplete().orElseThrow().response(), out);
-            case "response.failed" -> {
-                Response response = event.failed().orElseThrow().response();
-                ResponseTranslator.ResponseFailedException failure = ResponseTranslator.failure(response);
-                error(failure.status(), failure.getMessage(), out);
-            }
-            case "error" -> {
-                var failure = event.error().orElseThrow();
-                error(ErrorCodes.status(failure.code().orElse("")), failure.message(), out);
-            }
-            default -> dropped(type);
+    /**
+     * What each event of the upstream's stream does. The SDK hands an event this does not override to {@link
+     * #unknown}, as it does an event of a type it does not know.
+     */
+    private final class Events implements ResponseStreamEvent.Visitor<Void> {
+
+        private final List<String> out;
+
+        Events(List<String> out) {
+            this.out = out;
+        }
+
+        @Override
+        public Void visitCreated(ResponseCreatedEvent created) {
+            messageId = created.response().id();
+            start(out);
+            return null;
+        }
+
+        @Override
+        public Void visitOutputItemAdded(ResponseOutputItemAddedEvent added) {
+            itemAdded(added, out);
+            return null;
+        }
+
+        @Override
+        public Void visitOutputTextDelta(ResponseTextDeltaEvent delta) {
+            textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta(), out);
+            return null;
+        }
+
+        @Override
+        public Void visitRefusalDelta(ResponseRefusalDeltaEvent delta) {
+            textDelta("text:" + delta.outputIndex() + ":" + delta.contentIndex(), delta.delta(), out);
+            return null;
+        }
+
+        @Override
+        public Void visitFunctionCallArgumentsDelta(ResponseFunctionCallArgumentsDeltaEvent delta) {
+            argumentsDelta(delta, out);
+            return null;
+        }
+
+        @Override
+        public Void visitReasoningSummaryTextDelta(ResponseReasoningSummaryTextDeltaEvent delta) {
+            thinkingDelta(delta.outputIndex(), "summary:" + delta.summaryIndex(), delta.delta(), out);
+            return null;
+        }
+
+        @Override
+        public Void visitReasoningTextDelta(ResponseReasoningTextDeltaEvent delta) {
+            thinkingDelta(delta.outputIndex(), "content:" + delta.contentIndex(), delta.delta(), out);
+            return null;
+        }
+
+        @Override
+        public Void visitOutputItemDone(ResponseOutputItemDoneEvent done) {
+            itemDone(done, out);
+            return null;
+        }
+
+        @Override
+        public Void visitCompleted(ResponseCompletedEvent completed) {
+            finish(completed.response(), out);
+            return null;
+        }
+
+        @Override
+        public Void visitIncomplete(ResponseIncompleteEvent incomplete) {
+            finish(incomplete.response(), out);
+            return null;
+        }
+
+        @Override
+        public Void visitFailed(ResponseFailedEvent failed) {
+            ResponseTranslator.ResponseFailedException failure = ResponseTranslator.failure(failed.response());
+            error(failure.status(), failure.getMessage(), out);
+            return null;
+        }
+
+        @Override
+        public Void visitError(ResponseErrorEvent failure) {
+            error(ErrorCodes.status(failure.code().orElse("")), failure.message(), out);
+            return null;
+        }
+
+        @Override
+        public Void unknown(com.openai.core.JsonValue json) {
+            dropped(ResponsesJson.requiredType(Optional.ofNullable(json), "event"));
+            return null;
         }
     }
 
@@ -238,21 +303,26 @@ final class StreamTranslator {
         delta(chunk -> chunk.thinkingDelta(thought), out);
     }
 
-    private void itemAdded(ResponseStreamEvent event, List<String> out) {
-        var added = event.outputItemAdded().orElseThrow();
-        ResponseOutputItem item = added.item();
-        if ("function_call".equals(ResponsesJson.type(item._json()).orElse(""))) {
-            hasToolCall = true;
-            var call = item.functionCall().orElseThrow();
-            openBlock(
-                    "function:" + added.outputIndex(),
-                    Blocks.toolUse(call.callId(), names.toClient(call.name()), JsonValue.from(Map.of())),
-                    out);
-        }
+    private void itemAdded(ResponseOutputItemAddedEvent added, List<String> out) {
+        added.item().accept(new ResponseOutputItem.Visitor<Void>() {
+            @Override
+            public Void visitFunctionCall(ResponseFunctionToolCall call) {
+                hasToolCall = true;
+                openBlock(
+                        "function:" + added.outputIndex(),
+                        Blocks.toolUse(call.callId(), names.toClient(call.name()), JsonValue.from(Map.of())),
+                        out);
+                return null;
+            }
+
+            @Override
+            public Void unknown(com.openai.core.JsonValue json) {
+                return null;
+            }
+        });
     }
 
-    private void argumentsDelta(ResponseStreamEvent event, List<String> out) {
-        var delta = event.functionCallArgumentsDelta().orElseThrow();
+    private void argumentsDelta(ResponseFunctionCallArgumentsDeltaEvent delta, List<String> out) {
         if (!isOpen("function:" + delta.outputIndex()) || delta.delta().isEmpty()) {
             return;
         }
@@ -260,36 +330,47 @@ final class StreamTranslator {
         delta(chunk -> chunk.inputJsonDelta(delta.delta()), out);
     }
 
-    private void itemDone(ResponseStreamEvent event, List<String> out) {
-        var done = event.outputItemDone().orElseThrow();
-        ResponseOutputItem item = done.item();
-        String type = ResponsesJson.type(item._json()).orElse("(none)");
-        switch (type) {
-            case "function_call" -> {
+    private void itemDone(ResponseOutputItemDoneEvent done, List<String> out) {
+        done.item().accept(new ResponseOutputItem.Visitor<Void>() {
+            @Override
+            public Void visitFunctionCall(ResponseFunctionToolCall call) {
                 String key = "function:" + done.outputIndex();
                 if (!isOpen(key)) {
-                    return;
+                    return null;
                 }
-                String arguments = item.functionCall().orElseThrow().arguments();
+                String arguments = call.arguments();
                 if (!streamedArguments.contains(done.outputIndex()) && !arguments.isEmpty()) {
                     // The arguments an upstream sent without the deltas
                     delta(chunk -> chunk.inputJsonDelta(arguments), out);
                 }
                 closeBlock(out);
+                return null;
             }
-            case "reasoning" ->
-                reasoningDone(
-                        "reasoning:" + done.outputIndex(), item.reasoning().orElseThrow(), out);
-            case "message" -> {
-                ResponseOutputMessage message = item.message().orElseThrow();
+
+            @Override
+            public Void visitReasoning(ResponseReasoningItem reasoning) {
+                reasoningDone("reasoning:" + done.outputIndex(), reasoning, out);
+                return null;
+            }
+
+            @Override
+            public Void visitMessage(ResponseOutputMessage message) {
                 for (ContentBlock citation : ResponseTranslator.citationBlocks(message, seenUrls)) {
                     openBlock("citation", citation, out);
                     closeBlock(out);
                 }
                 isRefusal |= ResponseTranslator.hasRefusal(message);
+                return null;
             }
-            default -> log.warn("Dropping an unsupported Responses API output item: {}", type);
-        }
+
+            @Override
+            public Void unknown(com.openai.core.JsonValue json) {
+                log.warn(
+                        "Dropping an unsupported Responses API output item: {}",
+                        ResponsesJson.type(Optional.ofNullable(json)).orElse("(none)"));
+                return null;
+            }
+        });
     }
 
     /**

@@ -54,14 +54,22 @@ final class Blocks {
      * @throws IllegalArgumentException for a block of a type the translator never writes
      */
     static RawContentBlockStartEvent.ContentBlock opening(ContentBlock block) {
-        return block.text()
-                .map(RawContentBlockStartEvent.ContentBlock::ofText)
-                .or(() -> block.thinking().map(RawContentBlockStartEvent.ContentBlock::ofThinking))
-                .or(() -> block.redactedThinking().map(RawContentBlockStartEvent.ContentBlock::ofRedactedThinking))
-                .or(() -> block.toolUse().map(RawContentBlockStartEvent.ContentBlock::ofToolUse))
-                .or(() -> block.serverToolUse().map(RawContentBlockStartEvent.ContentBlock::ofServerToolUse))
-                .or(() ->
-                        block.webSearchToolResult().map(RawContentBlockStartEvent.ContentBlock::ofWebSearchToolResult))
-                .orElseThrow(() -> new IllegalArgumentException("not a block a stream opens: " + block));
+        return switch (block.type().value()) {
+            case TEXT -> RawContentBlockStartEvent.ContentBlock.ofText(block.asText());
+            case THINKING -> RawContentBlockStartEvent.ContentBlock.ofThinking(block.asThinking());
+            case REDACTED_THINKING ->
+                RawContentBlockStartEvent.ContentBlock.ofRedactedThinking(block.asRedactedThinking());
+            case TOOL_USE -> RawContentBlockStartEvent.ContentBlock.ofToolUse(block.asToolUse());
+            case SERVER_TOOL_USE -> RawContentBlockStartEvent.ContentBlock.ofServerToolUse(block.asServerToolUse());
+            case WEB_SEARCH_TOOL_RESULT ->
+                RawContentBlockStartEvent.ContentBlock.ofWebSearchToolResult(block.asWebSearchToolResult());
+            case WEB_FETCH_TOOL_RESULT,
+                    CODE_EXECUTION_TOOL_RESULT,
+                    BASH_CODE_EXECUTION_TOOL_RESULT,
+                    TEXT_EDITOR_CODE_EXECUTION_TOOL_RESULT,
+                    TOOL_SEARCH_TOOL_RESULT,
+                    CONTAINER_UPLOAD,
+                    _UNKNOWN -> throw new IllegalArgumentException("not a block a stream opens: " + block);
+        };
     }
 }

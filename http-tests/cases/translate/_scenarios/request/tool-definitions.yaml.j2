@@ -51,7 +51,7 @@ mocks: [{request: {json: {tools: [{type: web_search}], max_tool_calls: 3}}}]
 name: {{ (mode ~ ": " ~ "max_uses of several web searches is dropped") | tojson }}
 request:
   json:
-    tools: [{type: web_search_20250305, name: web_search, max_uses: 3}, {type: web_search_20260209, name: web_search_2, max_uses: 5}]
+    tools: [{type: web_search_20250305, name: web_search, max_uses: 3}, {type: web_search_20260209, name: web_search, max_uses: 5}]
 mocks: [{request: {json: {tools: [{type: web_search}, {type: web_search}]}}}]
 ---
 name: {{ (mode ~ ": " ~ "tool of another type is forwarded as sent") | tojson }}

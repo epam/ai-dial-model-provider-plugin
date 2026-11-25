@@ -1,4 +1,3 @@
-# What the request and the answer say of one thing, together.
 ---
 name: {{ (mode ~ ": " ~ "tool name that was aliased is restored in the answer") | tojson }}
 request: {json: {tools: [{name: get weather, input_schema: {type: object}}]}}

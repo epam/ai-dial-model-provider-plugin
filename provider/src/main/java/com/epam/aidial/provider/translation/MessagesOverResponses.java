@@ -122,7 +122,6 @@ public final class MessagesOverResponses implements ModelProvider {
         }
     }
 
-    /** The upstream's stream, translated; its failure, as for an answer that is whole. */
     private AdapterResponse stream(AdapterResponse answer, String deployment, ToolNames names, CachePaths cachePaths) {
         if (answer.status() >= 400) {
             return relayedError(answer, bytes(answer));

@@ -101,7 +101,6 @@ final class RequestTranslator {
                 .build());
     }
 
-    /** The Responses request, and the paths of the cache between it and the Messages request it comes from. */
     record Translation(ResponseCreateParams.Builder request, CachePaths cachePaths) {}
 
     /** The blocks of {@code system} as Core counts them: a string is one. */

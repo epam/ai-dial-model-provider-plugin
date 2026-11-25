@@ -82,7 +82,6 @@ public final class SupportedRoutes {
         return suiteOf(c).filter("translate"::equals).isPresent();
     }
 
-    /** The cases of the suite {@code translate} sit in the directory of their mode. */
     private static boolean isPluginMode(HttpTestCase c) {
         Path file = c.file();
         for (int i = file.getNameCount() - 3; i >= 0; i--) {

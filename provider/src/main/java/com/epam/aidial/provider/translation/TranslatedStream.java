@@ -46,7 +46,6 @@ final class TranslatedStream {
         return output;
     }
 
-    /** The upstream's body broke. */
     void fail(Throwable cause) {
         if (!ended) {
             ended = true;
@@ -165,7 +164,7 @@ final class TranslatedStream {
         @Override
         public Output fetch(long amount) {
             demand += amount;
-            if (demand < 0) { // overflow
+            if (demand < 0) {
                 demand = Long.MAX_VALUE;
             }
             drain();

@@ -2,7 +2,6 @@ package com.epam.aidial.provider.translation;
 
 import java.util.Set;
 
-/** What the Anthropic API calls a failure, as the Anthropic clients read it, and what the Responses API's codes are. */
 final class ErrorCodes {
 
     /** The error codes of the Responses API, and the error types DIAL writes into a stream, that blame the request. */

@@ -80,7 +80,6 @@ final class StreamTranslator {
         this.names = names;
     }
 
-    /** The upstream is alive, and says it between two events. */
     List<String> onHeartbeat() {
         if (!terminated) {
             out.add(sse("ping", Map.of("type", "ping")));
@@ -88,7 +87,6 @@ final class StreamTranslator {
         return drain();
     }
 
-    /** The data of one event of the upstream's stream. */
     List<String> onData(String data) {
         if (terminated) {
             return List.of();
@@ -106,7 +104,6 @@ final class StreamTranslator {
         return drain();
     }
 
-    /** The upstream's stream ended. */
     List<String> onEnd() {
         if (!terminated) {
             log.warn("The Responses API stream ended without a final event");
@@ -115,7 +112,6 @@ final class StreamTranslator {
         return drain();
     }
 
-    /** The upstream's stream broke. */
     List<String> onFailure(Throwable cause) {
         if (!terminated) {
             log.error("The Responses API stream failed", cause);
@@ -420,7 +416,6 @@ final class StreamTranslator {
                 RawMessageStopEvent.builder().build())));
     }
 
-    /** The counters of the final usage that {@code message_delta} carries. */
     private static MessageDeltaUsage deltaUsage(Usage usage) {
         return MessageDeltaUsage.builder()
                 .inputTokens(usage.inputTokens())
@@ -446,7 +441,6 @@ final class StreamTranslator {
         out.add(sse("error", event));
     }
 
-    /** The event under the {@code type} it holds. */
     private static String sse(RawMessageStreamEvent event) {
         return sse(event.type().asString(), event);
     }

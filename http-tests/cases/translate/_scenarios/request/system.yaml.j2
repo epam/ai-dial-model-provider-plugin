@@ -1,4 +1,3 @@
-# The system turns: a turn of its own, and one that clears itself.
 ---
 name: {{ (mode ~ ": " ~ "system turn is a system message in its place") | tojson }}
 request: {json: {messages: [{role: user, content: hi}, {role: system, content: Be brief}, {role: user, content: more}]}}

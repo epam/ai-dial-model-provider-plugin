@@ -119,7 +119,6 @@ final class ResponseTranslator {
         return signature.isEmpty() ? Optional.empty() : Optional.of(Blocks.redactedThinking(signature));
     }
 
-    /** The items of the output that become blocks of the message. */
     private static final class OutputItems implements ResponseOutputItem.Visitor<Void> {
 
         final List<ContentBlock> content = new ArrayList<>();
@@ -163,7 +162,6 @@ final class ResponseTranslator {
         }
     }
 
-    /** The blocks of a message; whether it holds a refusal. */
     private static final class MessageParts implements ResponseOutputMessage.Content.Visitor<Void> {
 
         boolean isRefusal;
@@ -198,12 +196,10 @@ final class ResponseTranslator {
         }
     }
 
-    /** Whether a message holds a refusal. */
     static boolean hasRefusal(ResponseOutputMessage message) {
         return message.content().stream().anyMatch(ResponseOutputMessage.Content::isRefusal);
     }
 
-    /** The web search blocks for the URLs a finished message cites for the first time. */
     static List<ContentBlock> citationBlocks(ResponseOutputMessage message, Set<String> seenUrls) {
         List<WebSearchBlocks.Citation> citations = new ArrayList<>();
         message.content().stream()
@@ -212,7 +208,6 @@ final class ResponseTranslator {
         return WebSearchBlocks.of(citations);
     }
 
-    /** The URL citations of a text that no text before it cited. */
     private static List<WebSearchBlocks.Citation> newCitations(ResponseOutputText text, Set<String> seenUrls) {
         List<WebSearchBlocks.Citation> citations = new ArrayList<>();
         for (ResponseOutputText.Annotation annotation : text.annotations()) {
@@ -302,7 +297,6 @@ final class ResponseTranslator {
                 .speed(Optional.empty());
     }
 
-    /** What the web search calls of the answer did: a search, or the opening of a page. None, if there were none. */
     static Optional<ServerToolUsage> webSearchCounts(List<ResponseOutputItem> output) {
         long searches = 0;
         long fetches = 0;
@@ -327,7 +321,6 @@ final class ResponseTranslator {
                 .build());
     }
 
-    /** The response says it failed: the client gets the status the failure maps to. */
     static final class ResponseFailedException extends RuntimeException {
 
         private final int status;

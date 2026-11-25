@@ -17,7 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** What the SDK's typed access does and does not give for the Responses API (plan §2.8, research §B). */
+/** What the SDK's typed access does and does not give for the Responses API. */
 class ResponsesJsonTest {
 
     private static byte[] bytes(String json) {

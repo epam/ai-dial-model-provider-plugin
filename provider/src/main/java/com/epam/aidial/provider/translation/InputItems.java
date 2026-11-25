@@ -355,7 +355,6 @@ final class InputItems {
                 : Optional.of(message(EasyInputMessage.Role.SYSTEM, systemParts));
     }
 
-    /** The text of a system turn's content: a string, or text blocks. */
     private List<ResponseInputContent> systemParts(BetaSystemMessageParam.Content content) {
         List<ResponseInputContent> systemParts = new ArrayList<>();
         content.string().filter(text -> !text.isEmpty()).ifPresent(text -> systemParts.add(ContentParts.text(text)));

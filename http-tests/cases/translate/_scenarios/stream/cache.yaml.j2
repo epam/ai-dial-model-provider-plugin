@@ -1,4 +1,3 @@
-# A stream is stamped with the cache affinity too, in the headers it starts with.
 ---
 name: {{ (mode ~ ": " ~ "a stream is stamped with the translated path and the expiry") | tojson }}
 request: {headers: {X-Dial-Cache-Breakpoint-Path: 'prefix.body.messages[0].content[0]'}}

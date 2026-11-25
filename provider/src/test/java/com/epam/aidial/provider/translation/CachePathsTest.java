@@ -7,7 +7,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * The paths of both bodies, as the plan's worked example has them: system [A, B] (one instruction); messages[0] "hi";
+ * The paths of both bodies in a worked example: system [A, B] (one instruction); messages[0] "hi";
  * messages[1] [thinking (dropped), text "ok", tool_use]; messages[2] [tool_result, text "go"], translated into
  * instructions, input[0] user "hi", [1] assistant "ok", [2] function_call, [3] function_call_output, [4] user "go".
  */

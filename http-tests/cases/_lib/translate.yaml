@@ -1,4 +1,3 @@
-# What the cases of the translate suite share.
 # The signature of the thinking block that carries the reasoning item rs_1 (encrypted_content ENC) to the next turn: the
 # answer says it, and the request that replays it must be taken for it.
 signature: '{"dial_translator_reasoning_wrapper":{"version":2,"id":"rs_1","encrypted_content":"ENC"}}'

@@ -57,7 +57,6 @@ public final class AnthropicJson {
         return optional(field, JsonField::asKnown, name + ": has the wrong type");
     }
 
-    /** The value of a field, read by {@code read}: empty if absent or null, an error if {@code read} cannot. */
     private static <F, T> Optional<T> optional(
             JsonField<F> field, Function<JsonField<F>, Optional<T>> read, String error) {
         if (field.isMissing() || field.isNull()) {
@@ -78,7 +77,6 @@ public final class AnthropicJson {
                 "model: has the wrong type");
     }
 
-    /** A property of the request the model has no field for: missing if the request has none. */
     private static JsonField<?> additional(MessageCreateParams.Body request, String name) {
         return field(request._additionalProperties().getOrDefault(name, JsonMissing.of()));
     }
@@ -96,7 +94,6 @@ public final class AnthropicJson {
         return field(value).asString();
     }
 
-    /** A JSON object given as text; empty if it is not one. */
     public static Optional<JsonValue> object(String json) {
         try {
             JsonValue value = MAPPER.readValue(json, JsonValue.class);
@@ -129,7 +126,6 @@ public final class AnthropicJson {
         return request.outputConfig().flatMap(c -> c.effort()).map(e -> e.asString());
     }
 
-    /** A message, a stream event or any other model as JSON, in the order and spelling the API uses. */
     public static String write(Object model) {
         try {
             return MAPPER.writeValueAsString(model);

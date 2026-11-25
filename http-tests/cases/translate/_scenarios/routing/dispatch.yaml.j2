@@ -1,4 +1,3 @@
-# What the route does for each kind of upstream, and the paths it does not serve.
 ---
 name: {{ (mode ~ ": " ~ "count_tokens is not served for a Responses API upstream") | tojson }}
 request: {path: /anthropic/v1/messages/count_tokens}

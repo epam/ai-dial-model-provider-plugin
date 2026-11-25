@@ -20,7 +20,6 @@ final class WebSearchBlocks {
 
     private WebSearchBlocks() {}
 
-    /** The pair for the citations, in order; none for none. */
     static List<ContentBlock> of(List<Citation> citations) {
         if (citations.isEmpty()) {
             return List.of();

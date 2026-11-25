@@ -9,12 +9,10 @@ import com.openai.models.ReasoningEffort;
 import java.util.List;
 import java.util.Optional;
 
-/** The {@code reasoning} of the Responses request: how much to think, and whether to say what was thought. */
 final class Reasoning {
 
     private Reasoning() {}
 
-    /** Empty when the request says nothing of thinking. */
     static Optional<com.openai.models.Reasoning> of(MessageCreateParams.Body request) {
         Optional<BetaThinkingConfigParam> thinking = request.thinking();
         Optional<ReasoningEffort> effort = effort(request, thinking);

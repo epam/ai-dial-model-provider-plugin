@@ -47,7 +47,6 @@ final class CachePaths {
         this.itemOfBlock = itemOfBlock;
     }
 
-    /** The Responses body's path of a position of the Messages body. */
     Optional<String> toResponses(String path) {
         Matcher tool = MESSAGES_TOOL.matcher(path);
         if (tool.matches()) {
@@ -92,7 +91,6 @@ final class CachePaths {
         return -1;
     }
 
-    /** The Messages body's path of a position of the Responses body. */
     Optional<String> toMessages(String path) {
         Matcher m = RESPONSES_PATH.matcher(path);
         if (!m.matches()) {
@@ -111,7 +109,6 @@ final class CachePaths {
                         : Optional.empty();
             }
             default -> {
-                // the last block that went into the item
                 for (int j = itemOfBlock.size() - 1; j >= 0; j--) {
                     int[] blocks = itemOfBlock.get(j);
                     for (int k = blocks.length - 1; k >= 0; k--) {

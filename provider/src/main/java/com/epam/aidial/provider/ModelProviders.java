@@ -33,7 +33,6 @@ public final class ModelProviders {
 
     public static final Set<String> ADAPTERS = Set.of("openai", "vertexai", "bedrock");
 
-    /** The translators a plugin entry can be, each served below {@code /<name>}. */
     public static final Set<String> TRANSLATORS = Set.of("openaiResponses");
 
     private ModelProviders() {}
@@ -63,7 +62,6 @@ public final class ModelProviders {
                 google,
                 now));
 
-        // The translator's calls back to DIAL Core: outside the mounts' caps, as DialApi's are
         UpstreamClient dialCoreClient = new UpstreamClient(vertx, proxies, Limits.uncapped(Duration.ofMinutes(10)));
         List<UpstreamClient> clients = List.of(openaiClient, vertexaiClient, bedrockClient, dialCoreClient);
         return new CompatRouter(
@@ -79,7 +77,6 @@ public final class ModelProviders {
                 () -> close(vertx, clients, dial, aws));
     }
 
-    /** The translator and nothing else: for a plugin entry that is a translator (see {@link #TRANSLATOR_PREFIX}). */
     public static CompatRouter createTranslator(Vertx vertx, Config config) {
         UpstreamClient dialCoreClient = dialCoreClient(vertx, config);
         return new CompatRouter(
@@ -94,19 +91,11 @@ public final class ModelProviders {
     /** DIAL Core's translator contract: Core calls {@code <base URL>/anthropic/v1/messages}, and is called back. */
     public static final String TRANSLATOR_PREFIX = "/openaiResponses";
 
-    /**
-     * The Messages API for a model that DIAL Core serves through its Responses API, as a service of DIAL Core.
-     *
-     * @param dialCoreClient what calls DIAL Core back
-     */
     public static TranslatorMount translatorMount(UpstreamClient dialCoreClient, Config config) {
         return new TranslatorMount(MessagesOverResponses.overDialCore(dialCoreClient, config.dialUrl()));
     }
 
     /**
-     * The openai mount: the Messages API routes, which also serve a Responses API upstream (translating), and the
-     * Responses API routes. Both call through {@code client}.
-     *
      * @param dial null without DIAL_URL
      */
     public static Routes openaiMount(

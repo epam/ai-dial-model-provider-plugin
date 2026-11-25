@@ -24,7 +24,6 @@ public final class ResponsesJson {
 
     private ResponsesJson() {}
 
-    /** The upstream's answer, whole. */
     public static Response parseResponse(byte[] json) {
         return read(json, Response.class);
     }
@@ -37,7 +36,6 @@ public final class ResponsesJson {
         return read(json, ResponseStreamEvent.class);
     }
 
-    /** The {@code type} of an output item or content part as sent, if it has one. */
     public static Optional<String> type(Optional<JsonValue> raw) {
         return raw.flatMap(value -> field(value).asObject())
                 .flatMap(object -> Optional.ofNullable(object.get("type")))
@@ -45,8 +43,6 @@ public final class ResponsesJson {
     }
 
     /**
-     * The {@code type} as sent.
-     *
      * @throws OpenAIInvalidDataException if there is none
      */
     public static String requiredType(Optional<JsonValue> raw, String what) {
@@ -104,7 +100,6 @@ public final class ResponsesJson {
                         .get("stream"));
     }
 
-    /** A model of the SDK as JSON. */
     public static String write(Object model) {
         try {
             return MAPPER.writeValueAsString(model);

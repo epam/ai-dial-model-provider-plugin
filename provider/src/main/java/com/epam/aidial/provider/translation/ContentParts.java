@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/** The parts of a Responses API message that the content blocks of a Messages API turn become. */
 final class ContentParts {
 
     private static final String FILES_API_UNSUPPORTED = "Files uploaded via Anthropic Files API aren't supported.";
@@ -30,13 +29,11 @@ final class ContentParts {
         this.dropped = dropped;
     }
 
-    /** One {@code input_text} part. */
     static ResponseInputContent text(String text) {
         return ResponseInputContent.ofInputText(
                 ResponseInputText.builder().text(text).build());
     }
 
-    /** The parts of a block of a user turn (or of a document's content): none, if it has none. */
     List<ResponseInputContent> of(BetaContentBlockParam block) {
         if (block.isText()) {
             return texts(block.asText().text());
@@ -57,7 +54,6 @@ final class ContentParts {
         return List.of();
     }
 
-    /** The parts of what a tool answered: a string, or blocks, less the references to tools the API loads. */
     List<ResponseInputContent> toolResult(BetaToolResultBlockParam.Content content) {
         List<ResponseInputContent> parts = new ArrayList<>();
         content.string().ifPresent(text -> parts.addAll(texts(text)));

@@ -1,4 +1,3 @@
-# The call back to DIAL Core, in the modes that make one (as a service over HTTP, as a plugin through its host).
 ---
 name: {{ (mode ~ ": " ~ "the model of the call back is the deployment, whatever the request says") | tojson }}
 request: {headers: {X-DIAL-OVERRIDE-NAME: other}, json: {model: another-model}}

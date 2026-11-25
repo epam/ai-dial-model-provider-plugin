@@ -24,7 +24,6 @@ final class CoreCallback {
 
     private CoreCallback() {}
 
-    /** The translated body, with the deployment as the model. */
     static Buffer body(AdapterRequest request) {
         ResponseCreateParams.Body translated = ResponsesJson.parseRequest(Buffers.array(request.body()));
         String deployment = request.headers().get(MessagesOverResponses.DEPLOYMENT_HEADER);

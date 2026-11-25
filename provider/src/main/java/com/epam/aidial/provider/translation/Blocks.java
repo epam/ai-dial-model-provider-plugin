@@ -19,7 +19,6 @@ final class Blocks {
 
     private Blocks() {}
 
-    /** What called a tool: the model itself, as for every tool of the request. */
     static DirectCaller direct() {
         return DIRECT;
     }

@@ -14,7 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** What the SDK's typed access does and does not give, as the translator relies on it (plan §2.8, research §B). */
+/** What the SDK's typed access does and does not give, as the translator relies on it. */
 class AnthropicJsonTest {
 
     private static MessageCreateParams.Body request(String json) {

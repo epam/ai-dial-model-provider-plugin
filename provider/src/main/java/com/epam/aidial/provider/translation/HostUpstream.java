@@ -51,7 +51,6 @@ final class HostUpstream implements ResponsesUpstream {
                 });
     }
 
-    /** The body of an answer that is not streamed, read to its end. */
     private static Future<AdapterResponse> whole(AdapterResponse answer) {
         if (answer.body() instanceof Body.Bytes) {
             return Future.succeededFuture(answer);
@@ -63,7 +62,6 @@ final class HostUpstream implements ResponsesUpstream {
                 .map(body -> new AdapterResponse(answer.status(), answer.headers(), new Body.Bytes(body)));
     }
 
-    /** A stream's body, as one buffer. */
     private static final class Collector implements WriteStream<Buffer> {
 
         private final Buffer whole = Buffer.buffer();

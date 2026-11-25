@@ -70,7 +70,6 @@ final class ModelProviderPlugin implements Plugin {
                 .map(response -> new Answer(context, response, aborted));
     }
 
-    /** DIAL Core, called in process through the host of the request. */
     private static CoreCall coreCall(HostDelegate host, Future<Void> aborted) {
         return call -> {
             ObjectNode body;

@@ -27,7 +27,6 @@ final class PluginSettings {
         return MAPPER.convertValue(settings, PluginSettings.class);
     }
 
-    /** Whether the entry serves an adapter: it has the setting (null is none). */
     boolean hasAdapter() {
         return adapter != null && !adapter.isNull();
     }
@@ -42,7 +41,6 @@ final class PluginSettings {
         adapter = value;
     }
 
-    /** Whether the entry is a translator: it has the setting (null is none). */
     boolean hasTranslator() {
         return translator != null && !translator.isNull();
     }

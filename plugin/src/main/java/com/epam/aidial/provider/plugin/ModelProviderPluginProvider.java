@@ -52,7 +52,6 @@ public final class ModelProviderPluginProvider implements PluginProvider {
         }
     }
 
-    /** An entry is an adapter or a translator, and one of the names this plugin has. */
     private static Optional<Problem> entry(PluginSettings settings) {
         if (settings.hasAdapter() && settings.hasTranslator()) {
             return Optional.of(new Problem(TRANSLATOR, "an entry has an adapter or a translator, not both"));

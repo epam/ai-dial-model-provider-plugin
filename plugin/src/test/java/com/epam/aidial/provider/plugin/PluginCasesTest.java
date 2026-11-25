@@ -81,7 +81,6 @@ class PluginCasesTest {
         return request -> serve(plugin, new Host(client, coreUrl, request));
     }
 
-    /** DIAL Core's side of a request: it reaches the plugin as the plugin API has it. */
     private static Future<AdapterResponse> serve(Plugin plugin, Host host) {
         AdapterRequest request = host.request;
         String uri = request.query() == null ? request.path() : request.path() + "?" + request.query();
@@ -103,7 +102,6 @@ class PluginCasesTest {
                         new Body.Stream(response.body().pipe())));
     }
 
-    /** What DIAL Core gives a plugin to call a deployment with: a call is served with the key of the request. */
     private static final class Host implements HostDelegate {
 
         private final HttpClient client;

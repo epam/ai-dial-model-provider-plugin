@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** How an entry's settings are read: what it is (an adapter or a translator), and what the rest of it sets. */
 class PluginSettingsTest {
 
     private static ObjectNode entry() {

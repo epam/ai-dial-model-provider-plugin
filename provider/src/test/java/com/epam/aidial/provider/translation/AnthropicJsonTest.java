@@ -78,7 +78,6 @@ class AnthropicJsonTest {
                 """
                 {"messages":[{"role":"user","content":[
                   {"type":"text","text":"hi"},
-                  {"type":"mid_conv_system","content":"sys"},
                   {"type":"brand_new_block","a":1},
                   {"a":1}]}]}""");
         List<BetaContentBlockParam> blocks = body.messages()
@@ -89,16 +88,10 @@ class AnthropicJsonTest {
                 .contentBlockParams()
                 .orElseThrow();
         assertEquals(
-                List.of("text", "mid_conv_system", "brand_new_block", "(none)"),
+                List.of("text", "brand_new_block", "(none)"),
                 blocks.stream()
                         .map(b -> AnthropicJson.typeName(b.type()._value()))
                         .toList());
-        assertEquals(
-                "sys",
-                AnthropicJson.midConvSystem(blocks.get(1)._json())
-                        .orElseThrow()
-                        .string()
-                        .orElseThrow());
     }
 
     @Test

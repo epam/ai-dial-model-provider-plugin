@@ -1,4 +1,4 @@
-# The system turns: a turn of its own, one that clears itself, and the system blocks inside the other turns.
+# The system turns: a turn of its own, and one that clears itself.
 ---
 name: {{ (mode ~ ": " ~ "system turn is a system message in its place") | tojson }}
 request: {json: {messages: [{role: user, content: hi}, {role: system, content: Be brief}, {role: user, content: more}]}}
@@ -42,32 +42,3 @@ mocks:
       input: !replace
       - {type: message, role: system, content: [{type: input_text, text: keep}]}
       - {type: message, role: user, content: [{type: input_text, text: hi}]}
----
-name: {{ (mode ~ ": " ~ "mid_conv_system in a user turn comes after the outputs, before the user text") | tojson }}
-request:
-  json:
-    messages:
-    - role: user
-      content: [{type: text, text: now}, {type: mid_conv_system, content: sys}, {type: tool_result, tool_use_id: t1, content: ok}]
-mocks:
-- request:
-    json:
-      input: !replace
-      - {type: function_call_output, call_id: t1, output: ok}
-      - {type: message, role: system, content: [{type: input_text, text: sys}]}
-      - {type: message, role: user, content: [{type: input_text, text: now}]}
----
-name: {{ (mode ~ ": " ~ "mid_conv_system in an assistant turn comes before the turn") | tojson }}
-request:
-  json:
-    messages:
-    - {role: user, content: hi}
-    - role: assistant
-      content: [{type: text, text: a}, {type: mid_conv_system, content: [{type: text, text: sys}]}]
-mocks:
-- request:
-    json:
-      input:
-      - {}
-      - {type: message, role: system, content: [{type: input_text, text: sys}]}
-      - {type: message, role: assistant, content: a}

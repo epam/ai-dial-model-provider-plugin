@@ -89,18 +89,15 @@ Files API aren't supported.".
 
 ### Turns, in order
 
-- **A user turn** gives its `tool_result` blocks first (each a `function_call_output`), then its `mid_conv_system`
-  text (a `system` message), then one `user` message of the rest. The outputs answer the calls of the previous turn,
-  and the system text prefaces the user text.
-- **An assistant turn** gives its `mid_conv_system` text first, then its blocks in order. Adjacent `text` and
-  `compaction` blocks are one message, which ends at every `tool_use`; a `tool_use` is a `function_call` with the
-  `input` as its `arguments` (`{}` without one).
+- **A user turn** gives its `tool_result` blocks first (each a `function_call_output`), then one `user` message of the
+  rest. The outputs answer the calls of the previous turn.
+- **An assistant turn** gives its blocks in order. Adjacent `text` and `compaction` blocks are one message, which ends
+  at every `tool_use`; a `tool_use` is a `function_call` with the `input` as its `arguments` (`{}` without one).
 - **A tool result** of only text is a string output (the texts joined by a line feed, prefixed with `Error: ` when
   `is_error`). With an image or document it is the list of parts (a first part `Error:` when `is_error`). A
   `tool_reference` is dropped.
 - **A system turn** that says `clear_at: next_user_message` is dropped once a user message follows it, and stays while
-  none does. A system turn, and a `mid_conv_system` block, hold a string or text blocks (and nested `mid_conv_system`
-  blocks); an empty one is nothing.
+  none does. A system turn holds a string or text blocks; an empty one is nothing.
 
 Everything dropped is named in one warning in the log.
 

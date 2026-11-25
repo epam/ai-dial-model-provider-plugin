@@ -34,7 +34,6 @@ import org.slf4j.LoggerFactory;
 final class InputItems {
 
     private static final Logger log = LoggerFactory.getLogger(InputItems.class);
-    private static final String MID_CONV_SYSTEM = "mid_conv_system";
 
     private final ContentParts parts;
     private final ToolNames names;
@@ -176,12 +175,10 @@ final class InputItems {
                             ? null
                             : message(EasyInputMessage.Role.USER, List.of(ContentParts.text(string.get()))));
         }
-        // The outputs answer the calls of the previous turn, so they come first, and the system text prefaces the
-        // user text that follows it
+        // The outputs answer the calls of the previous turn, so they come first
         List<BetaContentBlockParam> blocks = content.contentBlockParams().orElse(List.of());
         Turn turn = Turn.hidden(blocks.size());
         List<ResponseInputItem> outputs = new ArrayList<>();
-        List<ResponseInputItem> system = new ArrayList<>();
         List<ResponseInputContent> userParts = new ArrayList<>();
         List<Integer> userBlocks = new ArrayList<>();
         for (int k = 0; k < blocks.size(); k++) {
@@ -190,10 +187,6 @@ final class InputItems {
                 ResponseInputItem output = functionCallOutput(block.asToolResult());
                 outputs.add(output);
                 turn.itemOfBlock.set(k, output);
-            } else if (isMidConvSystem(block)) {
-                Optional<ResponseInputItem> message = midConvSystem(block);
-                message.ifPresent(system::add);
-                turn.itemOfBlock.set(k, message.orElse(null));
             } else {
                 List<ResponseInputContent> blockParts = parts.of(block);
                 userParts.addAll(blockParts);
@@ -203,7 +196,6 @@ final class InputItems {
             }
         }
         turn.items.addAll(outputs);
-        turn.items.addAll(system);
         if (!userParts.isEmpty()) {
             ResponseInputItem user = message(EasyInputMessage.Role.USER, userParts);
             turn.items.add(user);
@@ -224,7 +216,6 @@ final class InputItems {
         // joined into one message
         List<BetaContentBlockParam> blocks = content.contentBlockParams().orElse(List.of());
         Turn turn = Turn.hidden(blocks.size());
-        List<ResponseInputItem> system = new ArrayList<>();
         List<ResponseInputItem> items = new ArrayList<>();
         List<String> texts = new ArrayList<>();
         List<Integer> textBlocks = new ArrayList<>();
@@ -249,10 +240,6 @@ final class InputItems {
                         block.asThinking().signature(), block.asThinking().thinking());
             } else if (block.isRedactedThinking()) {
                 item = reasoning(block.asRedactedThinking().data(), "");
-            } else if (isMidConvSystem(block)) {
-                Optional<ResponseInputItem> message = midConvSystem(block);
-                message.ifPresent(system::add);
-                turn.itemOfBlock.set(k, message.orElse(null));
             } else {
                 dropped.add("assistant content block "
                         + AnthropicJson.typeName(block.type()._value()));
@@ -264,8 +251,6 @@ final class InputItems {
             }
         }
         flush(texts, textBlocks, items, turn);
-        // After the turn, the system text could separate a call from its output
-        turn.items.addAll(system);
         turn.items.addAll(items);
         return turn;
     }
@@ -363,14 +348,6 @@ final class InputItems {
                 systemMessage(content.get()).orElse(null));
     }
 
-    private static boolean isMidConvSystem(BetaContentBlockParam block) {
-        return AnthropicJson.typeName(block.type()._value()).equals(MID_CONV_SYSTEM);
-    }
-
-    private Optional<ResponseInputItem> midConvSystem(BetaContentBlockParam block) {
-        return AnthropicJson.midConvSystem(block._json()).flatMap(this::systemMessage);
-    }
-
     private Optional<ResponseInputItem> systemMessage(BetaSystemMessageParam.Content content) {
         List<ResponseInputContent> systemParts = systemParts(content);
         return systemParts.isEmpty()
@@ -378,7 +355,7 @@ final class InputItems {
                 : Optional.of(message(EasyInputMessage.Role.SYSTEM, systemParts));
     }
 
-    /** The text of a system turn's content: a string, or blocks, which may hold a nested system block. */
+    /** The text of a system turn's content: a string, or text blocks. */
     private List<ResponseInputContent> systemParts(BetaSystemMessageParam.Content content) {
         List<ResponseInputContent> systemParts = new ArrayList<>();
         content.string().filter(text -> !text.isEmpty()).ifPresent(text -> systemParts.add(ContentParts.text(text)));
@@ -390,14 +367,7 @@ final class InputItems {
                             block.asText().text().isEmpty()
                                     ? List.of()
                                     : List.of(ContentParts.text(block.asText().text()));
-                        case TOOL_ADDITION, TOOL_REMOVAL -> droppedSystemBlock(block);
-                        // Core's block, which the SDK has no variant for
-                        case _UNKNOWN ->
-                            typeName(block).equals(MID_CONV_SYSTEM)
-                                    ? AnthropicJson.midConvSystem(block._json())
-                                            .map(this::systemParts)
-                                            .orElse(List.of())
-                                    : droppedSystemBlock(block);
+                        case TOOL_ADDITION, TOOL_REMOVAL, _UNKNOWN -> droppedSystemBlock(block);
                     });
         }
         return systemParts;

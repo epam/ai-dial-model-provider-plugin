@@ -4,11 +4,8 @@ import com.anthropic.core.JsonField;
 import com.anthropic.core.JsonMissing;
 import com.anthropic.core.JsonValue;
 import com.anthropic.core.ObjectMappers;
-import com.anthropic.models.beta.messages.BetaSystemMessageParam;
 import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.epam.aidial.provider.api.InvalidRequestException;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -114,18 +111,6 @@ public final class AnthropicJson {
         Map<String, Object> map = MAPPER.convertValue(model, new TypeReference<Map<String, Object>>() {});
         return map == null ? Map.of() : map;
     }
-
-    /**
-     * The content of a {@code mid_conv_system} block, a block of Core's that the SDK has no variant for: read as the
-     * type it is, not as JSON. Empty if the block holds none.
-     */
-    public static Optional<BetaSystemMessageParam.Content> midConvSystem(Optional<JsonValue> block) {
-        return block.map(json -> MAPPER.convertValue(json, MidConvSystem.class))
-                .flatMap(midConv -> Optional.ofNullable(midConv.content()));
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record MidConvSystem(@JsonProperty("content") BetaSystemMessageParam.Content content) {}
 
     /** {@link JsonValue} extends the raw {@code JsonField}: through this its accessors keep their types. */
     private static JsonField<?> field(JsonValue value) {

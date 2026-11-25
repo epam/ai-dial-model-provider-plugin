@@ -244,11 +244,12 @@ final class StreamTranslator {
                 .outputTokensDetails(Optional.empty())
                 .serverToolUse(Optional.empty())
                 .build();
-        out.add(sse(RawMessageStartEvent.of(ResponseTranslator.messageBuilder(messageId, model)
-                .content(List.of())
-                .stopReason(Optional.empty())
-                .usage(usage)
-                .build())));
+        out.add(sse(RawMessageStreamEvent.ofMessageStart(
+                RawMessageStartEvent.of(ResponseTranslator.messageBuilder(messageId, model)
+                        .content(List.of())
+                        .stopReason(Optional.empty())
+                        .usage(usage)
+                        .build()))));
     }
 
     private void openBlock(String key, ContentBlock block) {
@@ -256,10 +257,10 @@ final class StreamTranslator {
         closeBlock();
         openKey = key;
         openIndex = nextIndex++;
-        out.add(sse(RawContentBlockStartEvent.builder()
+        out.add(sse(RawMessageStreamEvent.ofContentBlockStart(RawContentBlockStartEvent.builder()
                 .index(openIndex)
                 .contentBlock(Blocks.opening(block))
-                .build()));
+                .build())));
     }
 
     private boolean isOpen(String key) {
@@ -271,8 +272,9 @@ final class StreamTranslator {
             log.warn("Delta event has arrived before open event for a content block");
             return;
         }
-        out.add(sse(delta.apply(RawContentBlockDeltaEvent.builder().index(openIndex))
-                .build()));
+        out.add(sse(RawMessageStreamEvent.ofContentBlockDelta(
+                delta.apply(RawContentBlockDeltaEvent.builder().index(openIndex))
+                        .build())));
     }
 
     private void closeBlock() {
@@ -280,7 +282,8 @@ final class StreamTranslator {
             return;
         }
         openKey = null;
-        out.add(sse(RawContentBlockStopEvent.builder().index(openIndex).build()));
+        out.add(sse(RawMessageStreamEvent.ofContentBlockStop(
+                RawContentBlockStopEvent.builder().index(openIndex).build())));
     }
 
     private void textDelta(String key, String text) {
@@ -404,7 +407,7 @@ final class StreamTranslator {
         terminated = true;
         StopReason stopReason =
                 ResponseTranslator.stopReason(ResponseTranslator.incompleteReason(response), hasToolCall, isRefusal);
-        out.add(sse(RawMessageDeltaEvent.builder()
+        out.add(sse(RawMessageStreamEvent.ofMessageDelta(RawMessageDeltaEvent.builder()
                 .delta(RawMessageDeltaEvent.Delta.builder()
                         .container(Optional.empty())
                         .stopDetails(Optional.empty())
@@ -412,8 +415,9 @@ final class StreamTranslator {
                         .stopSequence(Optional.empty())
                         .build())
                 .usage(deltaUsage(ResponseTranslator.usage(response)))
-                .build()));
-        out.add(sse(RawMessageStopEvent.builder().build()));
+                .build())));
+        out.add(sse(RawMessageStreamEvent.ofMessageStop(
+                RawMessageStopEvent.builder().build())));
     }
 
     /** The counters of the final usage that {@code message_delta} carries. */
@@ -442,28 +446,9 @@ final class StreamTranslator {
         out.add(sse("error", event));
     }
 
-    private static String sse(RawMessageStartEvent event) {
-        return sse("message_start", RawMessageStreamEvent.ofMessageStart(event));
-    }
-
-    private static String sse(RawContentBlockStartEvent event) {
-        return sse("content_block_start", RawMessageStreamEvent.ofContentBlockStart(event));
-    }
-
-    private static String sse(RawContentBlockDeltaEvent event) {
-        return sse("content_block_delta", RawMessageStreamEvent.ofContentBlockDelta(event));
-    }
-
-    private static String sse(RawContentBlockStopEvent event) {
-        return sse("content_block_stop", RawMessageStreamEvent.ofContentBlockStop(event));
-    }
-
-    private static String sse(RawMessageDeltaEvent event) {
-        return sse("message_delta", RawMessageStreamEvent.ofMessageDelta(event));
-    }
-
-    private static String sse(RawMessageStopEvent event) {
-        return sse("message_stop", RawMessageStreamEvent.ofMessageStop(event));
+    /** The event under the {@code type} it holds. */
+    private static String sse(RawMessageStreamEvent event) {
+        return sse(event.type().asString(), event);
     }
 
     /** {@code event: <type>} and the compact JSON as data, which is how the Anthropic API writes an event. */

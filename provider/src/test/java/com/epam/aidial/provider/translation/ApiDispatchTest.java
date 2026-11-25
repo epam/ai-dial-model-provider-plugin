@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.Routes;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -48,7 +48,7 @@ class ApiDispatchTest {
 
     @Test
     void theUpstreamsApiDecidesWhoServesTheRoute() throws Exception {
-        ModelProvider responses = r -> answer("responses " + r.path());
+        Handler responses = r -> answer("responses " + r.path());
         Routes routes = Routes.of(new ApiDispatch(PATHS, MESSAGES, responses));
         for (String path : PATHS) {
             assertEquals(

@@ -1,7 +1,7 @@
 package com.epam.aidial.provider.translation;
 
 import com.epam.aidial.provider.ModelProviders;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
@@ -61,7 +61,7 @@ class MessagesToResponsesCasesTest {
         return CasesServer.containers(SupportedRoutes.suites(Runner.TRANSLATE), suite -> runner);
     }
 
-    private static ModelProvider prepare(JsonNode setup) {
+    private static Handler prepare(JsonNode setup) {
         Vertx vertx = server.vertx();
         JsonNode stubs = setup.path("stubs");
         long now = stubs.path("now_seconds").asLong();
@@ -82,9 +82,9 @@ class MessagesToResponsesCasesTest {
         UpstreamClient dialCore = server.own(
                 new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofSeconds(30))),
                 UpstreamClient::close);
-        ModelProvider service = new CompatRouter(
+        Handler service = new CompatRouter(
                 Map.of(ModelProviders.TRANSLATOR_PREFIX, ModelProviders.translatorMount(dialCore, config)));
-        ModelProvider openai = ModelProviders.openaiMount(
+        Handler openai = ModelProviders.openaiMount(
                 vertx,
                 config,
                 "/compat/openai",

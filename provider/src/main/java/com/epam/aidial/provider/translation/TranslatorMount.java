@@ -3,7 +3,7 @@ package com.epam.aidial.provider.translation;
 import com.epam.aidial.provider.anthropic.AnthropicErrors;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 
@@ -12,7 +12,7 @@ import io.vertx.core.http.HttpMethod;
  * forwards it to, {@code POST /anthropic/v1/messages}, and nothing else; any other request is a 404 in the Anthropic
  * API's error body.
  */
-public final class TranslatorMount implements ModelProvider {
+public final class TranslatorMount implements Handler {
 
     private static final String MESSAGES_PATH = "/anthropic/v1/messages";
 

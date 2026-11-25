@@ -8,7 +8,7 @@ import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.testing.http.CasesServer;
 import com.epam.aidial.provider.testing.http.HttpTestRunner;
@@ -67,7 +67,7 @@ class PluginCasesTest {
         return CasesServer.containers(SupportedRoutes.suites(Runner.PLUGIN), suite -> runner);
     }
 
-    private static ModelProvider prepare(JsonNode setup) {
+    private static Handler prepare(JsonNode setup) {
         Vertx vertx = server.vertx();
         Map<String, String> env = CasesServer.env(setup);
         ObjectNode entry = JsonNodeFactory.instance.objectNode().put("translator", "openaiResponses");

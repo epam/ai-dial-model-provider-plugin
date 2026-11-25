@@ -6,8 +6,8 @@ import com.epam.aidial.provider.anthropic.AnthropicErrors;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.api.InvalidRequestException;
-import com.epam.aidial.provider.api.ModelProvider;
 import com.epam.aidial.provider.core.Answers;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.json.Json;
@@ -30,13 +30,13 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The Anthropic Messages API of a model that only speaks the OpenAI Responses API: the request is translated, sent to
- * the {@link ModelProvider}, and what comes back is translated into the answer of the Messages API. Everything the
+ * the {@link Handler}, and what comes back is translated into the answer of the Messages API. Everything the
  * client sees is Anthropic-shaped, errors included.
  *
  * <p>A request that cannot be translated is a 400; an answer of the upstream that is not what the Responses API says
  * is a 500 whose detail is logged, never sent.
  */
-public final class MessagesOverResponses implements ModelProvider {
+public final class MessagesOverResponses implements Handler {
 
     private static final Logger log = LoggerFactory.getLogger(MessagesOverResponses.class);
 
@@ -46,7 +46,7 @@ public final class MessagesOverResponses implements ModelProvider {
     /** DIAL Core names the deployment the client called: the model of the message, whatever model the request says. */
     static final String DEPLOYMENT_HEADER = "X-DIAL-DEPLOYMENT-ID";
 
-    private final ModelProvider upstream;
+    private final Handler upstream;
 
     /**
      * Whether the upstream is DIAL Core, which routes the Responses API by the model: the call then names the
@@ -56,18 +56,18 @@ public final class MessagesOverResponses implements ModelProvider {
 
     /** Served through its own client, which is {@code ModelProviders}' to close. */
     public static MessagesOverResponses overDialCore(UpstreamClient client, @Nullable String dialUrl) {
-        ModelProvider http = new DialCoreUpstream(client, dialUrl);
-        ModelProvider host = new HostUpstream();
+        Handler http = new DialCoreUpstream(client, dialUrl);
+        Handler host = new HostUpstream();
         // A request that came through the host of a plugin calls DIAL Core through it: in process, with its credentials
         return new MessagesOverResponses(
                 request -> request.core() != null ? host.handle(request) : http.handle(request), true);
     }
 
-    public MessagesOverResponses(ModelProvider upstream) {
+    public MessagesOverResponses(Handler upstream) {
         this(upstream, false);
     }
 
-    private MessagesOverResponses(ModelProvider upstream, boolean callsCore) {
+    private MessagesOverResponses(Handler upstream, boolean callsCore) {
         this.upstream = upstream;
         this.callsCore = callsCore;
     }

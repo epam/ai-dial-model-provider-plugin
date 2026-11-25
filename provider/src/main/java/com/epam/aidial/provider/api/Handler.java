@@ -7,7 +7,7 @@ import io.vertx.core.Future;
  * sees an HTTP server request or response.
  */
 @FunctionalInterface
-public interface ModelProvider {
+public interface Handler {
 
     /**
      * An expected failure is a response. The future fails for a bug, and for a call that was cut off (the caller went

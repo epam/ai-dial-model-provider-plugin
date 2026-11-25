@@ -10,7 +10,7 @@ import com.epam.aidial.provider.ModelProviders;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.testing.Await;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -114,7 +114,7 @@ class CompatRouterTest {
 
     @Test
     void mountPrefixesArePathsAndNeverNested() {
-        ModelProvider none = r -> Future.succeededFuture(AdapterResponse.json(200, "{}"));
+        Handler none = r -> Future.succeededFuture(AdapterResponse.json(200, "{}"));
         for (String bad : List.of("", "/", "compat", "/compat/")) {
             assertThrows(IllegalArgumentException.class, () -> new CompatRouter(Map.of(bad, none)), bad);
         }

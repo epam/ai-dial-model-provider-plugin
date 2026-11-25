@@ -10,10 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.testing.Await;
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -55,7 +54,7 @@ class HttpServerShimTest {
     private HttpClient upstreamClient;
     private HttpServerShim shim;
     private int port;
-    private volatile ModelProvider provider;
+    private volatile Handler provider;
 
     @BeforeEach
     void start() throws Exception {
@@ -157,7 +156,7 @@ class HttpServerShimTest {
             response.write("data: 1\n\n");
             vertx.setTimer(10_000, t -> response.end());
         });
-        ModelProvider relay = relay(upstream);
+        Handler relay = relay(upstream);
         AtomicReference<WeakReference<byte[]>> body = new AtomicReference<>();
         provider = request -> {
             body.set(new WeakReference<>(Buffers.array(request.body())));
@@ -245,7 +244,7 @@ class HttpServerShimTest {
             request.response().setChunked(true).write("data: 1\n\n");
         });
         AtomicReference<Future<Void>> aborted = new AtomicReference<>();
-        ModelProvider relay = relay(upstream);
+        Handler relay = relay(upstream);
         provider = request -> {
             aborted.set(request.aborted());
             return relay.handle(request);
@@ -276,7 +275,7 @@ class HttpServerShimTest {
             });
         });
         AtomicReference<Future<Void>> aborted = new AtomicReference<>();
-        ModelProvider relay = relay(upstream);
+        Handler relay = relay(upstream);
         provider = request -> {
             aborted.set(request.aborted());
             return relay.handle(request);
@@ -324,13 +323,13 @@ class HttpServerShimTest {
 
     @Test
     void failedProviderIsPlain500() throws Exception {
-        ModelProvider failedFuture = request -> Future.failedFuture(new IllegalStateException("bug"));
-        ModelProvider throwing = request -> {
+        Handler failedFuture = request -> Future.failedFuture(new IllegalStateException("bug"));
+        Handler throwing = request -> {
             throw new IllegalStateException("bug");
         };
-        ModelProvider unwritable =
+        Handler unwritable =
                 request -> Future.succeededFuture(new AdapterResponse(200, MultiMap.caseInsensitiveMultiMap(), null));
-        for (ModelProvider failing : new ModelProvider[] {failedFuture, throwing, unwritable}) {
+        for (Handler failing : new Handler[] {failedFuture, throwing, unwritable}) {
             provider = failing;
             HttpResponse<String> response =
                     client.send(HttpRequest.newBuilder(uri("/")).build(), HttpResponse.BodyHandlers.ofString());
@@ -370,7 +369,7 @@ class HttpServerShimTest {
         assertTrue(raw.endsWith("{}"), raw);
     }
 
-    private ModelProvider relay(int upstreamPort) {
+    private Handler relay(int upstreamPort) {
         return request -> upstreamClient
                 .request(HttpMethod.GET, upstreamPort, "127.0.0.1", "/")
                 .compose(upstreamRequest -> {
@@ -381,7 +380,7 @@ class HttpServerShimTest {
                         response.statusCode(), response.headers(), new Body.Stream(response.pipe())));
     }
 
-    private int upstream(Handler<HttpServerRequest> handler) throws Exception {
+    private int upstream(io.vertx.core.Handler<HttpServerRequest> handler) throws Exception {
         HttpServer server =
                 await(vertx.createHttpServer().requestHandler(handler).listen(0, "127.0.0.1"));
         return server.actualPort();

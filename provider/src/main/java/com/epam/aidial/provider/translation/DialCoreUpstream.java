@@ -2,7 +2,7 @@ package com.epam.aidial.provider.translation;
 
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.upstream.ClientGoneException;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import io.vertx.core.Future;
@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
  * it): it calls DIAL Core back, {@code POST <DIAL_URL>openai/v1/responses}, with the caller's key (see {@link
  * CoreCallback}).
  */
-final class DialCoreUpstream implements ModelProvider {
+final class DialCoreUpstream implements Handler {
 
     private static final Logger log = LoggerFactory.getLogger(DialCoreUpstream.class);
 

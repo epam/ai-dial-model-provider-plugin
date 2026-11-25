@@ -25,7 +25,7 @@ public record AdapterRequest(
         MultiMap headers,
         Buffer body,
         Future<Void> aborted,
-        @Nullable ModelProvider core) {
+        @Nullable Handler core) {
 
     public AdapterRequest(
             HttpMethod method, String path, String query, MultiMap headers, Buffer body, Future<Void> aborted) {

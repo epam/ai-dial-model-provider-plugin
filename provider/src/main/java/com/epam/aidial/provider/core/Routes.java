@@ -2,7 +2,7 @@ package com.epam.aidial.provider.core;
 
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import java.net.URLDecoder;
@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * The first route of the path and method wins. A path that only has routes of other methods gets a 405 whose {@code
  * Allow} is the method of the first route of the path.
  */
-public final class Routes implements ModelProvider {
+public final class Routes implements Handler {
 
     public interface Group {
         void register(Routes routes);
@@ -54,7 +54,7 @@ public final class Routes implements ModelProvider {
         return table;
     }
 
-    public Routes add(HttpMethod method, String path, ModelProvider handler) {
+    public Routes add(HttpMethod method, String path, Handler handler) {
         routes.add(new Route(method, path, null, (request, id) -> handler.handle(request)));
         return this;
     }

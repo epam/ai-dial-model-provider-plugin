@@ -113,10 +113,13 @@ class PluginJarIsolationTest {
         List<PluginProvider> found = ServiceLoader.load(PluginProvider.class, isolated).stream()
                 .map(ServiceLoader.Provider::get)
                 .toList();
-        assertEquals(1, found.size(), found.toString());
+        assertEquals(
+                List.of("model-provider", "translator"),
+                found.stream().map(PluginProvider::type).toList());
+        for (PluginProvider each : found) {
+            assertEquals(isolated, each.getClass().getClassLoader(), "from the jar");
+        }
         PluginProvider provider = found.getFirst();
-        assertEquals("model-provider", provider.type());
-        assertEquals(isolated, provider.getClass().getClassLoader(), "from the jar");
 
         ObjectNode settings = JsonNodeFactory.instance.objectNode().put("adapter", "openai");
         assertEquals(List.of(), provider.validate(settings));

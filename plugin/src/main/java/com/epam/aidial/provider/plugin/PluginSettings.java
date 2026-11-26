@@ -11,16 +11,14 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A plugin entry's settings as Jackson binds them: the keys the plugin reads itself ({@code adapter} and {@code
- * translator}: an entry has one of them), and every other key as a variable of the service's own configuration ({@link
- * #variables}).
+ * A model-provider entry's settings as Jackson binds them: the key the plugin reads itself ({@code adapter}), and every
+ * other key as a variable of the service's own configuration ({@link #variables}).
  */
 final class PluginSettings {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private @Nullable JsonNode adapter;
-    private @Nullable JsonNode translator;
     private final Map<String, JsonNode> others = new LinkedHashMap<>();
 
     static PluginSettings of(ObjectNode settings) {
@@ -39,20 +37,6 @@ final class PluginSettings {
     @JsonSetter("adapter")
     void adapter(JsonNode value) {
         adapter = value;
-    }
-
-    boolean hasTranslator() {
-        return translator != null && !translator.isNull();
-    }
-
-    /** The name of the translator the entry is; empty if the setting is missing or is not text. */
-    String translator() {
-        return text(translator);
-    }
-
-    @JsonSetter("translator")
-    void translator(JsonNode value) {
-        translator = value;
     }
 
     private static String text(@Nullable JsonNode value) {

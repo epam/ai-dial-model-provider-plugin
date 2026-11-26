@@ -71,7 +71,7 @@ class PluginCasesTest {
         Vertx vertx = server.vertx();
         Map<String, String> env = CasesServer.env(setup);
         ObjectNode entry = JsonNodeFactory.instance.objectNode().put("translator", "openaiResponses");
-        Plugin plugin = new ModelProviderPluginProvider(env).create(entry, vertx);
+        Plugin plugin = new TranslatorPluginProvider().create(entry, vertx);
         server.own(plugin, p -> {
             p.close();
             return Future.succeededFuture();

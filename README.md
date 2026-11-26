@@ -105,8 +105,8 @@ One entry per adapter you use:
 
 - `adapter` is `openai`, `vertexai` or `bedrock`. It decides how the upstream is chosen
   (see [Upstreams](#upstreams)).
-- An entry can instead be a translator, `"translator": "openaiResponses"`, in place of `adapter` (an entry has one of
-  the two): see [Messages API for a Responses model](#messages-api-for-a-responses-model).
+- A translator is an entry of its own type, `translator`: see
+  [Messages API for a Responses model](#messages-api-for-a-responses-model).
 - Other settings are the [variables](#settings), by name. Values can be strings, numbers or booleans. `null` unsets a
   variable.
 - Variables not set here come from DIAL Core's environment. **Keep credentials there**: DIAL Core returns settings
@@ -203,8 +203,8 @@ is passed through, as always). Point the model's `anthropicMessages` interface a
 ```
 
 Another way is DIAL Core's *translator* contract, where the model's Messages interface is a translator and the Responses
-call goes to DIAL Core itself (the model is then the deployment `out`). Declare the entry
-`"translator": "openaiResponses"` (no `adapter`) and set the interface to a translator with
+call goes to DIAL Core itself (the model is then the deployment `out`). Declare an entry
+`{"type": "translator", "settings": {"translator": "openaiResponses"}}` and set the interface to a translator with
 `baseUrl: dial-plugin://<entry name>`. The standalone service serves the same at `POST /openaiResponses/anthropic/v1/messages`,
 calling `<DIAL_URL>openai/v1/responses` with the caller's key.
 

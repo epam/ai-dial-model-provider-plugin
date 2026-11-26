@@ -427,7 +427,7 @@ class ModelProviderPluginTest {
         List<String> types = ServiceLoader.load(PluginProvider.class).stream()
                 .map(p -> p.get().type())
                 .toList();
-        assertEquals(List.of("model-provider"), types);
+        assertEquals(List.of("model-provider", "translator"), types);
     }
 
     private Plugin plugin(Map<String, String> environment, ObjectNode settings) {

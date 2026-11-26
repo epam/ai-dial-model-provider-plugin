@@ -22,40 +22,28 @@ class PluginSettingsTest {
     }
 
     @Test
-    void entryIsAdapterOrTranslator() {
+    void adapterIsTheNameTheEntryServes() {
         PluginSettings adapter = PluginSettings.of(entry().put("adapter", "openai"));
         assertTrue(adapter.hasAdapter());
-        assertFalse(adapter.hasTranslator());
         assertEquals("openai", adapter.adapter());
-
-        PluginSettings translator = PluginSettings.of(entry().put("translator", "openaiResponses"));
-        assertFalse(translator.hasAdapter());
-        assertTrue(translator.hasTranslator());
-        assertEquals("openaiResponses", translator.translator());
     }
 
     @Test
     void settingThatIsNullIsNone() {
-        PluginSettings settings = PluginSettings.of(entry().putNull("adapter").putNull("translator"));
-        assertFalse(settings.hasAdapter());
-        assertFalse(settings.hasTranslator());
+        assertFalse(PluginSettings.of(entry().putNull("adapter")).hasAdapter());
     }
 
     @Test
     void settingThatIsNotTextIsThereAndNamesNothing() {
-        PluginSettings settings = PluginSettings.of(entry().put("adapter", 1).put("translator", true));
+        PluginSettings settings = PluginSettings.of(entry().put("adapter", 1));
         assertTrue(settings.hasAdapter());
         assertEquals("", settings.adapter());
-        assertTrue(settings.hasTranslator());
-        assertEquals("", settings.translator());
     }
 
     @Test
     void variablesAreTheEnvironmentThenTheEntryWithoutTheKeysItReadsItself() {
-        ObjectNode entry = entry().put("translator", "openaiResponses")
-                .put("A", "entry")
-                .putNull("B")
-                .put("N", 10);
+        ObjectNode entry =
+                entry().put("adapter", "openai").put("A", "entry").putNull("B").put("N", 10);
         entry.put("T", true).putObject("O").put("x", "y");
         entry.putArray("L").add(1);
         assertEquals(
@@ -64,42 +52,22 @@ class PluginSettingsTest {
     }
 
     @Test
-    void translatorEntryIsValid() {
-        assertEquals(List.of(), validate(entry().put("translator", "openaiResponses")));
+    void entryOfAnUnknownAdapterNamesTheKnownOnes() {
+        assertEquals(
+                List.of(new Problem("adapter", "must be one of bedrock, openai, vertexai")),
+                validate(entry().put("adapter", "nope")));
+        assertEquals(
+                List.of(new Problem("adapter", "must be one of bedrock, openai, vertexai")),
+                validate(entry().put("adapter", 1)));
     }
 
     @Test
-    void translatorEntryOfAnUnknownTranslatorNamesTheKnownOnes() {
+    void entryWithoutAnAdapterIsRefusedAndNamesThem() {
         assertEquals(
-                List.of(new Problem("translator", "must be one of openaiResponses")),
-                validate(entry().put("translator", "nope")));
-        assertEquals(
-                List.of(new Problem("translator", "must be one of openaiResponses")),
-                validate(entry().put("translator", 1)));
-    }
-
-    @Test
-    void entryWithBothAdapterAndTranslatorIsRefused() {
-        assertEquals(
-                List.of(new Problem("translator", "an entry has an adapter or a translator, not both")),
-                validate(entry().put("adapter", "openai").put("translator", "openaiResponses")));
-    }
-
-    @Test
-    void entryWithNeitherIsRefusedAndNamesBoth() {
-        assertEquals(
-                List.of(new Problem(
-                        "adapter",
-                        "an entry needs an adapter (one of bedrock, openai, vertexai) or a translator (one of"
-                                + " openaiResponses)")),
+                List.of(new Problem("adapter", "an entry needs an adapter (one of bedrock, openai, vertexai)")),
                 validate(entry()));
-    }
-
-    @Test
-    void settingOfTranslatorEntryIsCheckedLikeAnyOther() {
         assertEquals(
-                new Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"),
-                validate(entry().put("translator", "openaiResponses").put("HTTP_MAX_CONNECTIONS", "many"))
-                        .getFirst());
+                List.of(new Problem("adapter", "an entry needs an adapter (one of bedrock, openai, vertexai)")),
+                validate(entry().put("translator", "openaiResponses")));
     }
 }

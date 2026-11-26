@@ -222,27 +222,29 @@ final class InputItems {
         for (int k = 0; k < blocks.size(); k++) {
             BetaContentBlockParam block = blocks.get(k);
             ResponseInputItem item = null;
-            if (block.isText()) {
-                if (!block.asText().text().isEmpty()) {
-                    texts.add(block.asText().text());
-                    textBlocks.add(k);
+            switch (block.type().value()) {
+                case TEXT -> {
+                    if (!block.asText().text().isEmpty()) {
+                        texts.add(block.asText().text());
+                        textBlocks.add(k);
+                    }
                 }
-            } else if (block.isCompaction()) {
-                Optional<String> text = block.asCompaction().content().filter(t -> !t.isEmpty());
-                text.ifPresent(texts::add);
-                if (text.isPresent()) {
-                    textBlocks.add(k);
+                case COMPACTION -> {
+                    Optional<String> text = block.asCompaction().content().filter(t -> !t.isEmpty());
+                    text.ifPresent(texts::add);
+                    if (text.isPresent()) {
+                        textBlocks.add(k);
+                    }
                 }
-            } else if (block.isToolUse()) {
-                item = functionCall(block.asToolUse());
-            } else if (block.isThinking()) {
-                item = reasoning(
-                        block.asThinking().signature(), block.asThinking().thinking());
-            } else if (block.isRedactedThinking()) {
-                item = reasoning(block.asRedactedThinking().data(), "");
-            } else {
-                dropped.add("assistant content block "
-                        + AnthropicJson.typeName(block.type()._value()));
+                case TOOL_USE -> item = functionCall(block.asToolUse());
+                case THINKING ->
+                    item = reasoning(
+                            block.asThinking().signature(), block.asThinking().thinking());
+                case REDACTED_THINKING ->
+                    item = reasoning(block.asRedactedThinking().data(), "");
+                default ->
+                    dropped.add("assistant content block "
+                            + AnthropicJson.typeName(block.type()._value()));
             }
             if (item != null) {
                 flush(texts, textBlocks, items, turn);

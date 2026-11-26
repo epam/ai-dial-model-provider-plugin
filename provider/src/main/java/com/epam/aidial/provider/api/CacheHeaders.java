@@ -1,15 +1,26 @@
-package com.epam.aidial.provider.translation;
+package com.epam.aidial.provider.api;
 
-import com.epam.aidial.provider.api.BodyPath;
+import io.vertx.core.MultiMap;
+import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * The paths of DIAL Core's cache affinity in the two bodies of one request. Core addresses a position of the body it
- * sent (a scalar counts as a one-element array: {@code system} as a string is {@code system[0]}, a string content is
- * {@code content[0]}), and asks the upstream to answer with the position that ends the prefix it cached.
+ * Everything about the cache affinity headers of DIAL Core. For a deployment it marks as auto-cached, Core sends
+ * {@value #BREAKPOINT} and the upstream answers with the position that ends the prefix it cached, and when that cache
+ * expires ({@value #EXPIRE_AT}).
+ *
+ * <p>The static methods are for a route that relays the answer as it is: {@link #asked}, {@link #stamp}. An instance
+ * is for the translation between the Messages and the Responses APIs, where the path is in the coordinates of the
+ * other body and has to be carried over ({@link #toUpstream}, {@link #toClient}).
+ *
+ * <p>Core addresses a position of the body it sent (a scalar counts as a one-element array: {@code system} as a
+ * string is {@code system[0]}, a string content is {@code content[0]}):
  *
  * <ul>
  *   <li>Messages: {@code tools[k]}, {@code system[k]}, {@code messages[j].content[k]}
@@ -20,9 +31,18 @@ import java.util.regex.Pattern;
  * is carried over by it. Going to the Responses body, a block is the item it went into; one that was dropped is what
  * the nearest block before it is (a prefix is still a prefix), else the instructions, else the last tool, else
  * nothing. Coming back, an item is the last block that went into it (one item may hold several), the instructions are
- * the last system block. A path that names nothing is {@code empty}: the header is left out.
+ * the last system block. A path that names nothing is {@code empty}: the header is left out, with its expiry.
  */
-final class CachePaths {
+public final class CacheHeaders {
+
+    private static final Logger log = LoggerFactory.getLogger(CacheHeaders.class);
+
+    public static final String BREAKPOINT = "X-Dial-Cache-Breakpoint-Path";
+
+    /** The epoch second at which the cached prompt expires. */
+    public static final String EXPIRE_AT = "X-Dial-Cache-Expire-At";
+
+    private static final String PREFIX = "x-dial-cache-";
 
     private static final Pattern MESSAGES_TOOL = Pattern.compile("^prefix\\.body\\.tools\\[(\\d+)]$");
     private static final Pattern MESSAGES_SYSTEM = Pattern.compile("^prefix\\.body\\.system\\[(\\d+)]$");
@@ -37,14 +57,77 @@ final class CachePaths {
     private final List<int[]> itemOfBlock;
 
     /**
+     * For the translation of the Messages API into the Responses API.
+     *
      * @param systemBlocks the blocks of {@code system} (a string is one)
      * @param itemOfBlock for each message, the {@code input} item each of its blocks went into, {@code -1} for none
      */
-    CachePaths(int tools, int systemBlocks, boolean hasInstructions, List<int[]> itemOfBlock) {
+    public CacheHeaders(int tools, int systemBlocks, boolean hasInstructions, List<int[]> itemOfBlock) {
         this.tools = tools;
         this.systemBlocks = systemBlocks;
         this.hasInstructions = hasInstructions;
         this.itemOfBlock = itemOfBlock;
+    }
+
+    // --- The route that relays the answer as it is
+
+    /** DIAL Core sends the header for a deployment it marks as auto-cached; the answer then names a breakpoint. */
+    public static boolean asked(MultiMap requestHeaders) {
+        return requestHeaders.contains(BREAKPOINT);
+    }
+
+    /** Replaces what the headers hold: the breakpoint, and the expiry a TTL after {@code now}. */
+    public static void stamp(MultiMap answerHeaders, CacheBreakpoint breakpoint, Instant now) {
+        answerHeaders.set(BREAKPOINT, breakpoint.path().value());
+        answerHeaders.set(EXPIRE_AT, Long.toString(now.getEpochSecond() + breakpoint.ttlSeconds()));
+    }
+
+    // --- The translation between the APIs
+
+    /** Whether the header is of the cache affinity: in the coordinates of a body that is not the other side's. */
+    public static boolean isCacheHeader(String name) {
+        return name.toLowerCase(Locale.ROOT).startsWith(PREFIX);
+    }
+
+    /**
+     * The path of the Messages request carried over to the Responses request, in place; left out when it names
+     * nothing there.
+     */
+    public void toUpstream(MultiMap headers) {
+        String path = headers.get(BREAKPOINT);
+        headers.remove(BREAKPOINT);
+        if (path == null) {
+            return;
+        }
+        Optional<String> translated = toResponses(path);
+        if (translated.isPresent()) {
+            headers.set(BREAKPOINT, translated.get());
+        } else {
+            log.warn(
+                    "Dropping the cache breakpoint: no element of the Responses request it is translated into: {}",
+                    path);
+        }
+    }
+
+    /**
+     * The cache affinity of the upstream's answer in the Messages body's coordinates: its path translated, and its
+     * expiry with it. Nothing in, nothing out, and no expiry for a path that names nothing.
+     */
+    public void toClient(MultiMap upstreamHeaders, MultiMap clientHeaders) {
+        String path = upstreamHeaders.get(BREAKPOINT);
+        if (path == null) {
+            return;
+        }
+        Optional<String> translated = toMessages(path);
+        if (translated.isEmpty()) {
+            log.warn("Dropping the cache breakpoint: no block of the Messages request it is translated into: {}", path);
+            return;
+        }
+        clientHeaders.set(BREAKPOINT, translated.get());
+        String expireAt = upstreamHeaders.get(EXPIRE_AT);
+        if (expireAt != null) {
+            clientHeaders.set(EXPIRE_AT, expireAt);
+        }
     }
 
     Optional<String> toResponses(String path) {

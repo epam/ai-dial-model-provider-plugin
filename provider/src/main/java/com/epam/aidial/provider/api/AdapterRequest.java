@@ -57,11 +57,6 @@ public record AdapterRequest(
         return version;
     }
 
-    /** DIAL Core sends the header for a deployment it marks as auto-cached; the response then names a breakpoint. */
-    public boolean asksForCacheBreakpoint() {
-        return headers.contains(AdapterResponse.CACHE_BREAKPOINT_HEADER);
-    }
-
     /**
      * A name that repeats keeps its first position and its last value, {@code +} is a space, a pair without {@code =}
      * has an empty value and an empty segment is skipped. A segment whose percent escapes are malformed is kept

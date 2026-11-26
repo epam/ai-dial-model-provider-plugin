@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
+import com.epam.aidial.provider.api.CacheHeaders;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.Routes;
@@ -149,9 +150,8 @@ class AnthropicRoutesTest {
         assertEquals("context-1m-2025-08-07", seen.headers().get("Anthropic-Beta"));
         assertNull(seen.headers().get("X-Other"));
         assertNull(seen.headers().get("Anthropic-Version"));
-        assertEquals(
-                "prefix.body.messages[0].content[0]", response.headers().get(AdapterResponse.CACHE_BREAKPOINT_HEADER));
-        assertEquals("4600", response.headers().get(AdapterResponse.CACHE_EXPIRE_AT_HEADER));
+        assertEquals("prefix.body.messages[0].content[0]", response.headers().get(CacheHeaders.BREAKPOINT));
+        assertEquals("4600", response.headers().get(CacheHeaders.EXPIRE_AT));
     }
 
     /**
@@ -474,8 +474,7 @@ class AnthropicRoutesTest {
                 "{\"model\":\"m\",\"messages\":" + prompt + "}",
                 Map.of("X-Upstream-Endpoint", fx.mock().url() + "/anthropic/v1/messages", "X-Upstream-Key", "k"));
         assertEquals(200, response.status());
-        assertEquals(
-                "prefix.body.messages[0].content[0]", response.headers().get(AdapterResponse.CACHE_BREAKPOINT_HEADER));
+        assertEquals("prefix.body.messages[0].content[0]", response.headers().get(CacheHeaders.BREAKPOINT));
     }
 
     @Test
@@ -487,7 +486,7 @@ class AnthropicRoutesTest {
                 "{\"model\":\"m\",\"messages\":" + PROMPT + "}",
                 Map.of("X-Upstream-Endpoint", fx.mock().url() + "/anthropic/v1/messages", "X-Upstream-Key", "k"));
         assertEquals(201, response.status());
-        assertNull(response.headers().get(AdapterResponse.CACHE_BREAKPOINT_HEADER));
+        assertNull(response.headers().get(CacheHeaders.BREAKPOINT));
     }
 
     @Test

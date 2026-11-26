@@ -68,6 +68,6 @@ class PluginSettingsTest {
                 validate(entry()));
         assertEquals(
                 List.of(new Problem("adapter", "an entry needs an adapter (one of bedrock, openai, vertexai)")),
-                validate(entry().put("translator", "openaiResponses")));
+                validate(entry().put("direction", "anthropicMessagesToOpenaiResponses")));
     }
 }

@@ -105,7 +105,7 @@ One entry per adapter you use:
 
 - `adapter` is `openai`, `vertexai` or `bedrock`. It decides how the upstream is chosen
   (see [Upstreams](#upstreams)).
-- A translator is an entry of its own type, `translator`: see
+- A translator is an entry of its own type, `translator`, with its own settings: see
   [Messages API for a Responses model](#messages-api-for-a-responses-model).
 - Other settings are the [variables](#settings), by name. Values can be strings, numbers or booleans. `null` unsets a
   variable.
@@ -203,10 +203,66 @@ is passed through, as always). Point the model's `anthropicMessages` interface a
 ```
 
 Another way is DIAL Core's *translator* contract, where the model's Messages interface is a translator and the Responses
-call goes to DIAL Core itself (the model is then the deployment `out`). Declare an entry
-`{"type": "translator", "settings": {"translator": "openaiResponses"}}` and set the interface to a translator with
-`baseUrl: dial-plugin://<entry name>`. The standalone service serves the same at `POST /openaiResponses/anthropic/v1/messages`,
-calling `<DIAL_URL>openai/v1/responses` with the caller's key.
+call goes to DIAL Core itself (the model is then the deployment `out`). The plugin entry, of the type `translator`, has
+one setting, the `direction` of the translation; the one there is is `anthropicMessagesToOpenaiResponses`.
+
+1. Declare the plugin entry:
+
+   ```json
+   {
+     "plugins": {
+       "anthropic-to-responses": {
+         "type": "translator",
+         "settings": { "direction": "anthropicMessagesToOpenaiResponses" }
+       }
+     }
+   }
+   ```
+
+2. Declare the [DIAL Core translator](https://github.com/epam/ai-dial-core/blob/development/docs/dynamic-settings/translators.md)
+   whose `baseUrl` names the plugin entry:
+
+   ```json
+   {
+     "translators": {
+       "anthropicMessagesToOpenaiResponses": {
+         "in": "anthropicMessages",
+         "out": "openaiResponses",
+         "baseUrl": "dial-plugin://anthropic-to-responses"
+       }
+     }
+   }
+   ```
+
+3. Reference the translator from the model's `anthropicMessages` interface. The model serves the Responses API itself,
+   pass-through (that is what the translator calls back):
+
+   ```json
+   {
+     "models": {
+       "gpt-5-mini": {
+         "type": "chat",
+         "overrideName": "gpt-5-mini",
+         "interfaces": {
+           "openaiResponses": { "base_url": "dial-plugin://model-provider-openai" },
+           "anthropicMessages": {
+             "mode": "translator",
+             "translator": "anthropicMessagesToOpenaiResponses"
+           }
+         },
+         "upstreams": [
+           {
+             "endpoint": "https://contoso.openai.azure.com/openai/v1/responses",
+             "key": "AZURE_OPENAI_KEY"
+           }
+         ]
+       }
+     }
+   }
+   ```
+
+The standalone service serves the same at `POST /openaiResponses/anthropic/v1/messages`, as a translator whose `baseUrl`
+is `<this service>/openaiResponses`; it calls `<DIAL_URL>openai/v1/responses` with the caller's key.
 
 What is translated, what is dropped (thinking blocks of another model's signature, `cache_control`, `blocked_domains`
 and more), and every failure are in [docs/messages-to-responses-translation.md](docs/messages-to-responses-translation.md).

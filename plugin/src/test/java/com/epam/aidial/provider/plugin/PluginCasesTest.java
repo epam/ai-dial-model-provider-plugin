@@ -39,7 +39,7 @@ import org.junit.jupiter.api.TestFactory;
 
 /**
  * Runs the cases of the suite {@code translate} that are of the mode {@code plugin}: the translator as a plugin entry
- * ({@code "translator": "openaiResponses"}), as DIAL Core drives a plugin. This class plays DIAL Core: it passes the
+ * ({@code "direction": "anthropicMessagesToOpenaiResponses"}), as DIAL Core drives a plugin. This class plays DIAL Core: it passes the
  * request to the plugin as DIAL Core does (the exact path of the interface, the headers, the body), and its host calls
  * the mock DIAL Core of the case (its {@code server.env.DIAL_URL}) over HTTP, with the key of the request, as DIAL Core
  * serves a call with it. Everything else is the plugin's own.
@@ -70,7 +70,7 @@ class PluginCasesTest {
     private static Handler prepare(JsonNode setup) {
         Vertx vertx = server.vertx();
         Map<String, String> env = CasesServer.env(setup);
-        ObjectNode entry = JsonNodeFactory.instance.objectNode().put("translator", "openaiResponses");
+        ObjectNode entry = JsonNodeFactory.instance.objectNode().put("direction", "anthropicMessagesToOpenaiResponses");
         Plugin plugin = new TranslatorPluginProvider().create(entry, vertx);
         server.own(plugin, p -> {
             p.close();

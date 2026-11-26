@@ -39,15 +39,16 @@ interface of a model (`anthropicMessages`) as a translator with the base URL `<t
 A plugin entry can be the translator, of the type **`translator`** (the adapters are of the type `model-provider`):
 
 ```json
-{"plugins": {"anthropic-over-responses": {"type": "translator", "settings": {"translator": "openaiResponses"}}}}
+{"plugins": {"anthropic-to-responses": {"type": "translator", "settings": {"direction": "anthropicMessagesToOpenaiResponses"}}}}
 ```
 
-and the interface of the model is a translator whose `baseUrl` is `dial-plugin://anthropic-over-responses`. DIAL Core
+and a translator of DIAL Core's whose `baseUrl` is `dial-plugin://anthropic-to-responses` serves the
+interface of the model (see the [README](../README.md#messages-api-for-a-responses-model)). DIAL Core
 passes the request to the plugin as it would to the service, at `/anthropic/v1/messages`; the plugin calls DIAL Core
 **in its own process**, through the host of the request (the plugin API's `HostDelegate`): no HTTP call, no key to look
 up, and the call is checked, limited and charged as the request's. The body and the headers of the call are those of the
-service (the `model` is the deployment's, only the cache policy and the upstream pin go). The entry has no other
-setting: one is refused. A request the plugin cannot make a call for (the host refuses it) is
+service (the `model` is the deployment's, only the cache policy and the upstream pin go). The only setting is the
+`direction`, `anthropicMessagesToOpenaiResponses` (the one translation there is); any other setting is refused. A request the plugin cannot make a call for (the host refuses it) is
 answered `502`, "Failed to reach DIAL Core"; the status DIAL Core answers with is relayed as for the service.
 
 Everything below is the same translation, in the three ways of calling it; the answer to a failed call back is relayed as

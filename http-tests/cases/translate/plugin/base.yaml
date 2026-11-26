@@ -1,5 +1,5 @@
 # What every case of this mode inherits (http-tests/README.md, bases): the translator as a plugin of DIAL Core (an
-# entry with "translator": "openaiResponses"), which DIAL Core calls at the exact path of the interface, and which calls
+# entry with "direction": "anthropicMessagesToOpenaiResponses"), which DIAL Core calls at the exact path of the interface, and which calls
 # DIAL Core back through the host of the request, in process. The runner (PluginCasesTest) plays DIAL Core: its host
 # calls the mock "upstream" at DIAL_URL over HTTP, with the key of the request, as DIAL Core serves a call with it. The
 # default exchange is the one of the other modes. The scenarios are in _scenarios, and run in every mode.

@@ -60,9 +60,7 @@ final class RequestTranslator {
         body.store(false);
         // Replays the reasoning of the previous turns without stored state
         body.addInclude(ResponseIncludable.REASONING_ENCRYPTED_CONTENT);
-        AnthropicJson.optional(request._maxTokens(), "max_tokens")
-                .map(RequestTranslator::outputTokens)
-                .ifPresent(tokens -> body.maxOutputTokens(tokens));
+        body.maxOutputTokens(outputTokens(request.maxTokens()));
         AnthropicJson.number(request, "temperature").ifPresent(n -> body.temperature(n.doubleValue()));
         AnthropicJson.number(request, "top_p").ifPresent(n -> body.topP(n.doubleValue()));
         request.serviceTier().flatMap(RequestTranslator::serviceTier).ifPresent(tier -> body.serviceTier(tier));

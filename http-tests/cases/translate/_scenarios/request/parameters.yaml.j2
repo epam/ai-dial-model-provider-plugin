@@ -17,10 +17,6 @@ name: {{ (mode ~ ": " ~ "max_tokens of 0 stays 0") | tojson }}
 request: {json: {max_tokens: 0}}
 mocks: [{request: {json: {max_output_tokens: 0}}}]
 ---
-name: {{ (mode ~ ": " ~ "absent max_tokens sends no output budget") | tojson }}
-request: {json: {max_tokens: !delete }}
-mocks: [{request: {json: {max_output_tokens: !delete }}}]
----
 name: {{ (mode ~ ": " ~ "stream false is sent as false") | tojson }}
 request: {json: {stream: false}}
 ---

@@ -23,7 +23,12 @@ expect: {status: 400, json: !replace {type: error, error: {type: invalid_request
 name: {{ (mode ~ ": " ~ "max_tokens of the wrong type") | tojson }}
 request: {json: {max_tokens: many}}
 mocks: []
-expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: 'max_tokens: has the wrong type'}}}
+expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: '`max_tokens` is invalid, received many'}}}
+---
+name: {{ (mode ~ ": " ~ "max_tokens is required") | tojson }}
+request: {json: {max_tokens: !delete }}
+mocks: []
+expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: '`max_tokens` is not set'}}}
 ---
 name: {{ (mode ~ ": " ~ "temperature of the wrong type") | tojson }}
 request: {json: {temperature: hot}}

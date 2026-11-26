@@ -63,7 +63,7 @@ described in [Failures](#failures).
 | a `user` message | an `input` message of the parts its blocks become (below), if it has any |
 | an `assistant` message | its texts joined by a line feed in one `assistant` message; its `tool_use` blocks are function calls (below) |
 | a `system` turn | a `system` message of its text |
-| `max_tokens` | `max_output_tokens`; 1 to 15 is raised to 16 (the API refuses less), `0` stays `0` |
+| `max_tokens` | `max_output_tokens`; 1 to 15 is raised to 16 (the API refuses less), `0` stays `0`. It is required: a request without it is a `400` |
 | `temperature`, `top_p` | the same |
 | `metadata.user_id` | `user`; dropped, not truncated, when longer than 64 characters |
 | `service_tier` | `auto` is `auto`, `standard_only` is `default`, any other is dropped |

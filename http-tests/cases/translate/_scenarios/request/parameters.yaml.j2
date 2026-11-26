@@ -1,19 +1,19 @@
 ---
 name: {{ (mode ~ ": " ~ "minimal") | tojson }}
 ---
-name: {{ (mode ~ ": " ~ "max_tokens below 16 is raised to 16") | tojson }}
+name: {{ (mode ~ ": " ~ "max_tokens below 16 is sent as is") | tojson }}
 request: {json: {max_tokens: 4}}
-mocks: [{request: {json: {max_output_tokens: 16}}}]
+mocks: [{request: {json: {max_output_tokens: 4}}}]
 ---
-name: {{ (mode ~ ": " ~ "max_tokens of 16 stays") | tojson }}
+name: {{ (mode ~ ": " ~ "max_tokens of 16 is sent as is") | tojson }}
 request: {json: {max_tokens: 16}}
 mocks: [{request: {json: {max_output_tokens: 16}}}]
 ---
-name: {{ (mode ~ ": " ~ "max_tokens above 16 stays") | tojson }}
+name: {{ (mode ~ ": " ~ "max_tokens above 16 is sent as is") | tojson }}
 request: {json: {max_tokens: 4096}}
 mocks: [{request: {json: {max_output_tokens: 4096}}}]
 ---
-name: {{ (mode ~ ": " ~ "max_tokens of 0 stays 0") | tojson }}
+name: {{ (mode ~ ": " ~ "max_tokens of 0 is sent as is") | tojson }}
 request: {json: {max_tokens: 0}}
 mocks: [{request: {json: {max_output_tokens: 0}}}]
 ---

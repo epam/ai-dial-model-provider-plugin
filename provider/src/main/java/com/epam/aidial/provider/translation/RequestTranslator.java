@@ -23,9 +23,6 @@ final class RequestTranslator {
 
     private static final Logger log = LoggerFactory.getLogger(RequestTranslator.class);
 
-    /** The Responses API rejects a smaller output budget, e.g. the one-token budget of the Claude Code probes. */
-    private static final long MIN_OUTPUT_TOKENS = 16;
-
     private static final int MAX_USER_LENGTH = 64;
 
     private RequestTranslator() {}
@@ -60,7 +57,7 @@ final class RequestTranslator {
         body.store(false);
         // Replays the reasoning of the previous turns without stored state
         body.addInclude(ResponseIncludable.REASONING_ENCRYPTED_CONTENT);
-        body.maxOutputTokens(outputTokens(request.maxTokens()));
+        body.maxOutputTokens(request.maxTokens());
         AnthropicJson.number(request, "temperature").ifPresent(n -> body.temperature(n.doubleValue()));
         AnthropicJson.number(request, "top_p").ifPresent(n -> body.topP(n.doubleValue()));
         request.serviceTier().flatMap(RequestTranslator::serviceTier).ifPresent(tier -> body.serviceTier(tier));
@@ -108,10 +105,6 @@ final class RequestTranslator {
                         ? 1
                         : system.betaTextBlockParams().map(List::size).orElse(0))
                 .orElse(0);
-    }
-
-    private static long outputTokens(long maxTokens) {
-        return maxTokens > 0 && maxTokens < MIN_OUTPUT_TOKENS ? MIN_OUTPUT_TOKENS : maxTokens;
     }
 
     private static Optional<ResponseCreateParams.ServiceTier> serviceTier(MessageCreateParams.ServiceTier tier) {

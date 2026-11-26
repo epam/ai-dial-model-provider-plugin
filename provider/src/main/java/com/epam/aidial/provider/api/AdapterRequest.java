@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  *                upstream call it made for the request
  * @param core    DIAL Core's create operations, for the translator that calls DIAL Core back: in the process of DIAL
  *                Core with the credentials of the request being served for a plugin (the plugin API's host), over
- *                HTTP for a service; {@link #NO_CORE} where there is none
+ *                HTTP for a service
  */
 public record AdapterRequest(
         HttpMethod method,
@@ -27,14 +27,6 @@ public record AdapterRequest(
         Buffer body,
         Future<Void> aborted,
         Handler core) {
-
-    public AdapterRequest(
-            HttpMethod method, String path, String query, MultiMap headers, Buffer body, Future<Void> aborted) {
-        this(method, path, query, headers, body, aborted, NO_CORE);
-    }
-
-    public static final Handler NO_CORE =
-            request -> Future.failedFuture(new IllegalStateException("the request has no DIAL Core to call"));
 
     public static final String ENDPOINT_HEADER = "X-Upstream-Endpoint";
 

@@ -21,6 +21,7 @@ import com.epam.aidial.provider.credentials.GoogleTokenSource;
 import com.epam.aidial.provider.json.Json;
 import com.epam.aidial.provider.testing.Await;
 import com.epam.aidial.provider.testing.MockUpstream;
+import com.epam.aidial.provider.testing.Requests;
 import com.epam.aidial.provider.testing.RoutesFixture;
 import com.epam.aidial.provider.upstream.Limits;
 import com.epam.aidial.provider.upstream.UpstreamClient;
@@ -126,7 +127,7 @@ class AnthropicRoutesTest {
                 .add("Anthropic-Beta", "prompt-caching-scope-2026-01-05, context-1m-2025-08-07")
                 .add("X-Other", "dropped");
         AdapterResponse response = await(vertex(10, 10_000)
-                .handle(new AdapterRequest(
+                .handle(Requests.of(
                         HttpMethod.POST,
                         "/anthropic/v1/messages",
                         null,
@@ -225,7 +226,7 @@ class AnthropicRoutesTest {
                 .add("Anthropic-Beta", "a, b")
                 .add("Anthropic-Beta", "c");
         await(vertex(10, 10_000)
-                .handle(new AdapterRequest(
+                .handle(Requests.of(
                         HttpMethod.POST,
                         "/anthropic/v1/messages",
                         null,
@@ -239,7 +240,7 @@ class AnthropicRoutesTest {
                 .add("Anthropic-Beta", "a, b")
                 .add("Anthropic-Beta", "c");
         await(vertex(10, 10_000)
-                .handle(new AdapterRequest(
+                .handle(Requests.of(
                         HttpMethod.POST,
                         "/anthropic/v1/messages",
                         null,
@@ -452,7 +453,7 @@ class AnthropicRoutesTest {
         MultiMap h = MultiMap.caseInsensitiveMultiMap()
                 .add("X-Upstream-Endpoint", fx.mock().url() + "/hold/v1/messages")
                 .add("X-Upstream-Key", "k");
-        Future<AdapterResponse> answer = routes.handle(new AdapterRequest(
+        Future<AdapterResponse> answer = routes.handle(Requests.of(
                 HttpMethod.POST,
                 "/anthropic/v1/messages",
                 null,
@@ -646,7 +647,7 @@ class AnthropicRoutesTest {
                 Map.of("X-Upstream-Endpoint", fx.mock().url() + "/anthropic/v1/messages", "X-Upstream-Key", "k");
         MultiMap h = MultiMap.caseInsensitiveMultiMap();
         foundry.forEach(h::add);
-        Future<AdapterResponse> holder = routes.handle(new AdapterRequest(
+        Future<AdapterResponse> holder = routes.handle(Requests.of(
                 HttpMethod.POST,
                 "/anthropic/v1/messages",
                 null,
@@ -694,7 +695,7 @@ class AnthropicRoutesTest {
     private static AdapterRequest request(Map<String, String> headers) {
         MultiMap h = MultiMap.caseInsensitiveMultiMap();
         headers.forEach(h::add);
-        return new AdapterRequest(
+        return Requests.of(
                 HttpMethod.POST,
                 "/anthropic/v1/messages",
                 null,

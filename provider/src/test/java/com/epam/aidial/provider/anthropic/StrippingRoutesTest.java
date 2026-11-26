@@ -3,7 +3,6 @@ package com.epam.aidial.provider.anthropic;
 import static com.epam.aidial.provider.testing.MockUpstream.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
@@ -12,6 +11,7 @@ import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
 import com.epam.aidial.provider.credentials.SessionTags;
 import com.epam.aidial.provider.testing.MockUpstream;
+import com.epam.aidial.provider.testing.Requests;
 import com.epam.aidial.provider.testing.RoutesFixture;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -244,7 +244,7 @@ class StrippingRoutesTest {
             headers.add("Anthropic-Beta", betas);
         }
         Routes routes = upstream.name().startsWith("BEDROCK") ? bedrockMount : vertexMount;
-        AdapterResponse response = await(routes.handle(new AdapterRequest(
+        AdapterResponse response = await(routes.handle(Requests.of(
                 HttpMethod.POST,
                 endpoint,
                 null,

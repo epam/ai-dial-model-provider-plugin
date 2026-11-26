@@ -3,7 +3,6 @@ package com.epam.aidial.provider.testing;
 import static com.epam.aidial.provider.testing.MockUpstream.await;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
 import com.epam.aidial.provider.core.Routes;
@@ -67,7 +66,7 @@ public final class RoutesFixture implements BeforeEachCallback, AfterEachCallbac
         int q = pathAndQuery.indexOf('?');
         String path = q < 0 ? pathAndQuery : pathAndQuery.substring(0, q);
         String query = q < 0 ? null : pathAndQuery.substring(q + 1);
-        return await(routes.handle(new AdapterRequest(
+        return await(routes.handle(Requests.of(
                 method,
                 path,
                 query,

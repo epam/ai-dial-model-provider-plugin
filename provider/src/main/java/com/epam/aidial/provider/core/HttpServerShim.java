@@ -32,11 +32,6 @@ public final class HttpServerShim implements io.vertx.core.Handler<HttpServerReq
     private final AtomicInteger inFlight = new AtomicInteger();
     private volatile boolean draining;
 
-    /** For a provider that does not call DIAL Core back. */
-    public HttpServerShim(Handler provider) {
-        this(provider, AdapterRequest.NO_CORE);
-    }
-
     /**
      * @param core DIAL Core's create operations for the requests served (see {@link AdapterRequest#core()})
      */

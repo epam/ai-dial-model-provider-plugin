@@ -13,6 +13,7 @@ import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.credentials.Authorizer;
 import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -73,7 +74,7 @@ class TargetsTest {
         for (int i = 0; i < headers.length; i += 2) {
             h.add(headers[i], headers[i + 1]);
         }
-        return new AdapterRequest(
+        return Requests.of(
                 HttpMethod.POST,
                 "/openai/v1/responses",
                 query,

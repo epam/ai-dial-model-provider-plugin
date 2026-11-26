@@ -4,6 +4,7 @@ import static com.epam.aidial.provider.testing.MockUpstream.await;
 
 import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.HttpServerShim;
+import com.epam.aidial.provider.testing.Requests;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -44,7 +45,7 @@ public final class CasesServer implements AutoCloseable {
 
     public CasesServer() throws Exception {
         server = await(vertx.createHttpServer()
-                .requestHandler(new HttpServerShim(request -> routes.handle(request)))
+                .requestHandler(new HttpServerShim(request -> routes.handle(request), Requests.NO_CORE))
                 .listen(0, "127.0.0.1"));
     }
 

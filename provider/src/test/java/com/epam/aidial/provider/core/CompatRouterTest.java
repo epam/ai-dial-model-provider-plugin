@@ -12,6 +12,7 @@ import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
 import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.testing.Await;
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -244,7 +245,7 @@ class CompatRouterTest {
                 if (call[1] != null) {
                     headers.set("X-Upstream-Endpoint", call[1]);
                 }
-                AdapterResponse answer = served.handle(new AdapterRequest(
+                AdapterResponse answer = served.handle(Requests.of(
                                 HttpMethod.POST,
                                 call[0],
                                 null,
@@ -316,7 +317,7 @@ class CompatRouterTest {
     private static AdapterRequest post(String path, String endpoint, String body, Future<Void> aborted) {
         MultiMap headers =
                 MultiMap.caseInsensitiveMultiMap().set("X-Upstream-Key", "k").set("X-Upstream-Endpoint", endpoint);
-        return new AdapterRequest(HttpMethod.POST, path, null, headers, Buffer.buffer(body), aborted);
+        return Requests.of(HttpMethod.POST, path, null, headers, Buffer.buffer(body), aborted);
     }
 
     private AdapterResponse handle(HttpMethod method, String path) {
@@ -325,7 +326,7 @@ class CompatRouterTest {
 
     private static AdapterRequest request(HttpMethod method, String path, String query) {
         MultiMap headers = MultiMap.caseInsensitiveMultiMap().set("Api-Key", "k");
-        return new AdapterRequest(
+        return Requests.of(
                 method,
                 path,
                 query,

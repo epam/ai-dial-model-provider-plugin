@@ -13,6 +13,7 @@ import com.epam.aidial.provider.core.Routes;
 import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
 import com.epam.aidial.provider.credentials.GoogleTokenSource;
+import com.epam.aidial.provider.testing.Requests;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import com.sun.management.OperatingSystemMXBean;
 import io.vertx.core.Future;
@@ -119,8 +120,10 @@ class PassthroughBench {
                 google,
                 Clock.systemUTC()));
         HttpServer server = await(vertx.createHttpServer(ModelProviderVerticle.serverOptions("127.0.0.1", 0))
-                .requestHandler(new HttpServerShim(new CompatRouter(
-                        Map.of("/compat/vertexai", vertexai, "/compat/bedrock", bedrock, "/compat/openai", openai))))
+                .requestHandler(new HttpServerShim(
+                        new CompatRouter(Map.of(
+                                "/compat/vertexai", vertexai, "/compat/bedrock", bedrock, "/compat/openai", openai)),
+                        Requests.NO_CORE))
                 .listen());
         port = server.actualPort();
         client = vertx.createHttpClient(new HttpClientOptions().setMaxPoolSize(CONCURRENCY));

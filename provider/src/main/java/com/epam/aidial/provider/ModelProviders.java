@@ -36,8 +36,6 @@ public final class ModelProviders {
 
     public static final Set<String> ADAPTERS = Set.of("openai", "vertexai", "bedrock");
 
-    public static final Set<String> TRANSLATORS = Set.of("openaiResponses");
-
     private ModelProviders() {}
 
     public static CompatRouter create(Vertx vertx, Config config) {

@@ -12,6 +12,7 @@ import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
 import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.testing.Await;
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -60,7 +61,7 @@ class HttpServerShimTest {
     void start() throws Exception {
         vertx = Vertx.vertx();
         upstreamClient = vertx.createHttpClient();
-        shim = new HttpServerShim(request -> provider.handle(request));
+        shim = new HttpServerShim(request -> provider.handle(request), Requests.NO_CORE);
         port = freePort();
         await(vertx.deployVerticle(
                 new ModelProviderVerticle(shim, ModelProviderVerticle.serverOptions("127.0.0.1", port))));

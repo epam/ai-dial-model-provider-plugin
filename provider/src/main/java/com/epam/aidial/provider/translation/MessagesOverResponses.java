@@ -7,6 +7,7 @@ import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
 import com.epam.aidial.provider.api.CacheHeaders;
+import com.epam.aidial.provider.api.CacheHeaders.MessagesCacheHeaders;
 import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.epam.aidial.provider.core.Answers;
@@ -117,7 +118,7 @@ public final class MessagesOverResponses implements Handler {
     }
 
     private AdapterResponse answer(
-            AdapterResponse answer, String deployment, ToolNames names, CacheHeaders cacheHeaders) {
+            AdapterResponse answer, String deployment, ToolNames names, MessagesCacheHeaders cacheHeaders) {
         try {
             byte[] body = bytes(answer);
             if (answer.status() >= 400) {
@@ -141,7 +142,7 @@ public final class MessagesOverResponses implements Handler {
     }
 
     private AdapterResponse stream(
-            AdapterResponse answer, String deployment, ToolNames names, CacheHeaders cacheHeaders) {
+            AdapterResponse answer, String deployment, ToolNames names, MessagesCacheHeaders cacheHeaders) {
         if (answer.status() >= 400) {
             return relayedError(answer, bytes(answer));
         }
@@ -195,7 +196,8 @@ public final class MessagesOverResponses implements Handler {
     }
 
     /** The Messages request's headers go on: the {@code X-Upstream-*} ones select the upstream. */
-    private static AdapterRequest upstreamRequest(AdapterRequest request, String json, CacheHeaders cacheHeaders) {
+    private static AdapterRequest upstreamRequest(
+            AdapterRequest request, String json, MessagesCacheHeaders cacheHeaders) {
         MultiMap headers = MultiMap.caseInsensitiveMultiMap().addAll(request.headers());
         // describe the body of the Messages request, not the translated one; the body is read whole, so plain bytes
         headers.remove("Content-Length").remove("Accept-Encoding").set("Content-Type", "application/json");

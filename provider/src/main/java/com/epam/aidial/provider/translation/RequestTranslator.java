@@ -4,7 +4,7 @@ import com.anthropic.models.beta.messages.BetaJsonOutputFormat;
 import com.anthropic.models.beta.messages.BetaTextBlockParam;
 import com.anthropic.models.beta.messages.BetaToolUnion;
 import com.anthropic.models.beta.messages.MessageCreateParams;
-import com.epam.aidial.provider.api.CacheHeaders;
+import com.epam.aidial.provider.api.CacheHeaders.MessagesCacheHeaders;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
@@ -67,7 +67,7 @@ final class RequestTranslator {
         dropped.warn(log);
         return new Translation(
                 body,
-                new CacheHeaders(
+                new MessagesCacheHeaders(
                         sentTools.size(), systemBlocks(request), !instructions.isEmpty(), input.itemOfBlock()));
     }
 
@@ -98,7 +98,7 @@ final class RequestTranslator {
                 .build());
     }
 
-    record Translation(ResponseCreateParams.Builder request, CacheHeaders cacheHeaders) {}
+    record Translation(ResponseCreateParams.Builder request, MessagesCacheHeaders cacheHeaders) {}
 
     /** The blocks of {@code system} as Core counts them: a string is one. */
     private static int systemBlocks(MessageCreateParams.Body request) {

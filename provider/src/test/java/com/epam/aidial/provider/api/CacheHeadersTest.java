@@ -5,33 +5,32 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.epam.aidial.provider.api.CacheHeaders.MessagesCacheHeaders;
 import io.vertx.core.MultiMap;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/**
- * The headers of the cache affinity: relayed as they are, and carried over between the bodies of the two APIs. The
- * paths of both bodies in a worked example: system [A, B] (one instruction); messages[0] "hi";
- * messages[1] [thinking (dropped), text "ok", tool_use]; messages[2] [tool_result, text "go"], translated into
- * instructions, input[0] user "hi", [1] assistant "ok", [2] function_call, [3] function_call_output, [4] user "go".
- */
 class CacheHeadersTest {
 
-    private static final CacheHeaders EXAMPLE =
-            new CacheHeaders(1, 2, true, List.of(new int[] {0}, new int[] {-1, 1, 2}, new int[] {3, 4}));
+    private static final MessagesCacheHeaders EXAMPLE =
+            new MessagesCacheHeaders(1, 2, true, List.of(new int[] {0}, new int[] {-1, 1, 2}, new int[] {3, 4}));
 
     private static String body(String member) {
         return "prefix.body." + member;
     }
 
-    private static Optional<String> toResponses(CacheHeaders paths, String member) {
-        return paths.toResponses(body(member));
+    private static Optional<String> toResponses(MessagesCacheHeaders headers, String member) {
+        return MessagesCachePath.parse(body(member))
+                .flatMap(headers::toResponses)
+                .map(ResponsesCachePath::value);
     }
 
-    private static Optional<String> toMessages(CacheHeaders paths, String member) {
-        return paths.toMessages(body(member));
+    private static Optional<String> toMessages(MessagesCacheHeaders headers, String member) {
+        return ResponsesCachePath.parse(body(member))
+                .flatMap(headers::toMessages)
+                .map(MessagesCachePath::value);
     }
 
     @Test
@@ -74,16 +73,18 @@ class CacheHeadersTest {
         List<int[]> dropped = List.of(new int[] {-1}, new int[] {0});
         assertEquals(
                 Optional.of(body("instructions[0]")),
-                toResponses(new CacheHeaders(1, 1, true, dropped), "messages[0].content[0]"));
+                toResponses(new MessagesCacheHeaders(1, 1, true, dropped), "messages[0].content[0]"));
         assertEquals(
                 Optional.of(body("tools[1]")),
-                toResponses(new CacheHeaders(2, 0, false, dropped), "messages[0].content[0]"));
-        assertEquals(Optional.empty(), toResponses(new CacheHeaders(0, 0, false, dropped), "messages[0].content[0]"));
+                toResponses(new MessagesCacheHeaders(2, 0, false, dropped), "messages[0].content[0]"));
+        assertEquals(
+                Optional.empty(),
+                toResponses(new MessagesCacheHeaders(0, 0, false, dropped), "messages[0].content[0]"));
     }
 
     @Test
     void systemWithoutInstructionsIsNothing() {
-        CacheHeaders emptySystem = new CacheHeaders(0, 1, false, List.of(new int[] {0}));
+        MessagesCacheHeaders emptySystem = new MessagesCacheHeaders(0, 1, false, List.of(new int[] {0}));
         assertEquals(Optional.empty(), toResponses(emptySystem, "system[0]"));
         assertEquals(Optional.empty(), toMessages(emptySystem, "instructions[0]"));
     }
@@ -103,8 +104,41 @@ class CacheHeadersTest {
         for (String member : new String[] {"input", "input[-1]", "messages[0].content[0]", "output[0]"}) {
             assertEquals(Optional.empty(), toMessages(EXAMPLE, member), member);
         }
-        assertEquals(Optional.empty(), EXAMPLE.toResponses("body.input[0]"));
-        assertEquals(Optional.empty(), EXAMPLE.toMessages(""));
+        assertEquals(Optional.empty(), MessagesCachePath.parse("body.tools[0]"));
+        assertEquals(Optional.empty(), ResponsesCachePath.parse(""));
+    }
+
+    @Test
+    void messagesPathIsParsedByWhatItAddresses() {
+        assertEquals(Optional.of(new MessagesCachePath.Tool(2)), MessagesCachePath.parse(body("tools[2]")));
+        assertEquals(Optional.of(new MessagesCachePath.SystemBlock(1)), MessagesCachePath.parse(body("system[1]")));
+        assertEquals(
+                Optional.of(new MessagesCachePath.MessageBlock(3, 4)),
+                MessagesCachePath.parse(body("messages[3].content[4]")));
+        for (String member : new String[] {"input[0]", "instructions[0]", "messages[3]", "tools[99999999999]"}) {
+            assertEquals(Optional.empty(), MessagesCachePath.parse(body(member)), member);
+        }
+    }
+
+    @Test
+    void responsesPathIsParsedByWhatItAddresses() {
+        assertEquals(Optional.of(new ResponsesCachePath.Tool(2)), ResponsesCachePath.parse(body("tools[2]")));
+        assertEquals(
+                Optional.of(new ResponsesCachePath.Instructions()), ResponsesCachePath.parse(body("instructions[0]")));
+        assertEquals(Optional.of(new ResponsesCachePath.InputItem(5)), ResponsesCachePath.parse(body("input[5]")));
+        for (String member : new String[] {"instructions[1]", "system[0]", "input", "input[99999999999]"}) {
+            assertEquals(Optional.empty(), ResponsesCachePath.parse(body(member)), member);
+        }
+    }
+
+    @Test
+    void pathsAreWrittenInTheFormOfDialCore() {
+        assertEquals(body("tools[2]"), new MessagesCachePath.Tool(2).value());
+        assertEquals(body("system[1]"), new MessagesCachePath.SystemBlock(1).value());
+        assertEquals(body("messages[3].content[4]"), new MessagesCachePath.MessageBlock(3, 4).value());
+        assertEquals(body("tools[2]"), new ResponsesCachePath.Tool(2).value());
+        assertEquals(body("instructions[0]"), new ResponsesCachePath.Instructions().value());
+        assertEquals(body("input[5]"), new ResponsesCachePath.InputItem(5).value());
     }
 
     @Test

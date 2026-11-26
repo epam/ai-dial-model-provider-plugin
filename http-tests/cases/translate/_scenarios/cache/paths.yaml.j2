@@ -1,5 +1,5 @@
 # The cache affinity of DIAL Core: its paths are those of the body it sent, so each is carried over to the other API's
-# body (CacheHeaders, whose values CacheHeadersTest pins). Of the Responses call's header the upstream sees nothing here:
+# body (CacheHeaders.MessagesCacheHeaders, whose values CacheHeadersTest pins). Of the Responses call's header the upstream sees nothing here:
 # the Responses route only asks whether it is there, and then stamps its answer with the last item of its input (or the
 # instructions), which is carried back to the Messages body, with the expiry. So a path of the request that names no
 # position of the Responses request is left out, and the answer is not stamped.

@@ -6,7 +6,7 @@ import com.anthropic.models.beta.messages.BetaMessageParam;
 import com.anthropic.models.beta.messages.BetaSystemMessageParam;
 import com.anthropic.models.beta.messages.BetaToolResultBlockParam;
 import com.anthropic.models.beta.messages.BetaToolUseBlockParam;
-import com.epam.aidial.provider.api.CacheHeaders;
+import com.epam.aidial.provider.api.CacheHeaders.MessagesCacheHeaders;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.ResponseFunctionCallOutputItem;
@@ -47,8 +47,9 @@ final class InputItems {
     }
 
     /**
-     * The input items of the messages, and where each block of the messages went (see {@link CacheHeaders}). A message
-     * that is not visible (see {@link #visible}) has its blocks, and none of them went anywhere.
+     * The input items of the messages, and where each block of the messages went (see
+     * {@link MessagesCacheHeaders}). A message that is not visible (see {@link #visible}) has its blocks, and none of
+     * them went anywhere.
      */
     Result of(List<BetaMessageParam> messages) {
         List<BetaMessageParam> visible = visible(messages);

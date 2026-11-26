@@ -341,6 +341,8 @@ Everything the client sees is in the Anthropic API's error body, `{"type":"error
 - **`thinking` and `redacted_thinking` blocks that this translator did not sign are dropped with their text**
   ([details and examples](#thinking-blocks-that-are-dropped)).
 - `thinking.budget_tokens` has no equivalent; an effort that the Responses API has no word for is a `400`.
+- `tool_addition` and `tool_removal` blocks in a system turn in the middle of the conversation are ignored (dropped,
+  with a warning in the log): the tools they add or remove are not added to or removed from the request's `tools`.
 - A tool of a type the translator does not know is forwarded as sent, and the deployment decides.
 - Only creating a response is translated: the retrieval, deletion and cancellation of a Responses API response, and a
   `background` response, are not reachable through the Messages API.

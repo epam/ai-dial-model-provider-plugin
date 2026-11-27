@@ -137,7 +137,7 @@ Set the interface's `base_url` to `dial-plugin://<entry name>`. The model's `ups
       },
       "upstreams": [
         {
-          "endpoint": "https://contoso.openai.azure.com/openai/v1/responses",
+          "responsesEndpoint": "https://contoso.openai.azure.com/openai/v1/responses",
           "key": "AZURE_OPENAI_KEY"
         }
       ]
@@ -155,6 +155,10 @@ Set the interface's `base_url` to `dial-plugin://<entry name>`. The model's `ups
 The upstream stays in the model's `upstreams`: `endpoint`, `key` and `extraData`.
 DIAL Core passes them to the plugin. The adapter decides which upstreams it accepts.
 
+DIAL Core gives the Anthropic Messages interface the upstream's `endpoint`, and the OpenAI Responses interface its
+`responsesEndpoint` (or the `endpoint` of the upstream's `interfaces.openaiResponses`). A Responses call to an upstream
+with only `endpoint` reaches the plugin with no endpoint, and DIAL Core answers `502` "No route".
+
 Anthropic Messages:
 
 | Upstream         | `openai`                                      | `vertexai`                                                                  | `bedrock`                                                                               |
@@ -164,7 +168,7 @@ Anthropic Messages:
 | Vertex AI        | no                                            | no key: Google credentials, region and project from `extraData` or settings | no                                                                                      |
 | Bedrock          | no                                            | no                                                                          | no key: invoke-model or Mantle, region and AWS credentials from `extraData` or settings |
 
-OpenAI Responses, `openai` adapter only. The endpoint must end in `/responses`:
+OpenAI Responses, `openai` adapter only. The `responsesEndpoint` must end in `/responses`:
 
 - OpenAI and other v1 endpoints
 - Azure OpenAI, with its `api-version`
@@ -183,7 +187,8 @@ Anthropic Messages API, so that a client such as Claude Code works with it. The 
 answer and the stream. It is always on and there is nothing to set: the `openai` adapter looks at the endpoint of the
 upstream of each Messages request, and an endpoint ending in `/responses` is translated (one with `/v1/messages` in it
 is passed through, as always). Point the model's `anthropicMessages` interface at the `openai` entry, with the
-`upstreams` of the Responses model:
+Responses URL as the upstream's `endpoint`, which is what the Messages interface reads. A model that also serves the
+Responses API gives the same URL as `responsesEndpoint` (see [Upstreams](#upstreams)):
 
 ```json
 {
@@ -195,7 +200,11 @@ is passed through, as always). Point the model's `anthropicMessages` interface a
         "openaiResponses": { "base_url": "dial-plugin://model-provider-openai" }
       },
       "upstreams": [
-        { "endpoint": "https://contoso.openai.azure.com/openai/v1/responses", "key": "AZURE_OPENAI_KEY" }
+        {
+          "endpoint": "https://contoso.openai.azure.com/openai/v1/responses",
+          "responsesEndpoint": "https://contoso.openai.azure.com/openai/v1/responses",
+          "key": "AZURE_OPENAI_KEY"
+        }
       ]
     }
   }
@@ -235,7 +244,9 @@ one setting, the `direction` of the translation; the one there is is `anthropicM
    ```
 
 3. Reference the translator from the model's `anthropicMessages` interface. The model serves the Responses API itself,
-   pass-through (that is what the translator calls back):
+   pass-through (that is what the translator calls back), so its upstream needs `responsesEndpoint`. `translator` is
+   the translator's name as a string; an object there is read as an inline definition (`in`, `out`, `baseUrl`), not
+   as a reference:
 
    ```json
    {
@@ -252,7 +263,7 @@ one setting, the `direction` of the translation; the one there is is `anthropicM
          },
          "upstreams": [
            {
-             "endpoint": "https://contoso.openai.azure.com/openai/v1/responses",
+             "responsesEndpoint": "https://contoso.openai.azure.com/openai/v1/responses",
              "key": "AZURE_OPENAI_KEY"
            }
          ]

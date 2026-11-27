@@ -92,11 +92,11 @@ One entry per adapter you use:
 {
   "plugins": {
     "model-provider-bedrock": {
-      "pluginId": "model-provider",
+      "type": "model-provider",
       "settings": { "adapter": "bedrock", "HTTP_MAX_CONNECTIONS": "2000" }
     },
     "model-provider-openai": {
-      "pluginId": "model-provider",
+      "type": "model-provider",
       "settings": { "adapter": "openai" }
     }
   }
@@ -105,12 +105,10 @@ One entry per adapter you use:
 
 - `adapter` is `openai`, `vertexai` or `bedrock`. It decides how the upstream is chosen
   (see [Upstreams](#upstreams)).
-- A translator is an entry of its own plugin, `translator`, with its own settings: see
+- A translator is an entry of its own type, `translator`, with its own settings: see
   [Messages API for a Responses model](#messages-api-for-a-responses-model).
 - Other settings are the [variables](#settings), by name. Values can be strings, numbers, booleans or, for
   `AWS_SESSION_TAGS`, an object. `null` unsets a variable.
-- DIAL Core checks an entry's settings against the plugin's JSON Schema, which it lists at
-  `GET /v1/admin/plugin-providers`.
 - Variables not set here come from DIAL Core's environment. **Keep credentials there**: DIAL Core returns settings
   as written through its API.
 - Settings apply from the next request, no restart. A new jar needs a restart.
@@ -205,7 +203,7 @@ is passed through, as always). Point the model's `anthropicMessages` interface a
 ```
 
 Another way is DIAL Core's *translator* contract, where the model's Messages interface is a translator and the Responses
-call goes to DIAL Core itself (the model is then the deployment `out`). The plugin entry, of the `translator` plugin, has
+call goes to DIAL Core itself (the model is then the deployment `out`). The plugin entry, of the type `translator`, has
 one setting, the `direction` of the translation; the one there is is `anthropicMessagesToOpenaiResponses`.
 
 1. Declare the plugin entry:
@@ -214,7 +212,7 @@ one setting, the `direction` of the translation; the one there is is `anthropicM
    {
      "plugins": {
        "anthropic-to-responses": {
-         "pluginId": "translator",
+         "type": "translator",
          "settings": { "direction": "anthropicMessagesToOpenaiResponses" }
        }
      }

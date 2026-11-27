@@ -17,7 +17,6 @@ class SettingsTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** The entry of the JSON, with an adapter if it has none. */
     private static ObjectNode entry(String json) throws Exception {
         ObjectNode entry = (ObjectNode) MAPPER.readTree(json);
         if (!entry.has("adapter")) {

@@ -43,7 +43,7 @@ public final class ModelProviderPluginProvider implements PluginProvider {
         return Schemas.of(Settings.class);
     }
 
-    /** Checks what DIAL Core's schema check would, and the settings' own checks. */
+    /** DIAL Core checks no schema before the plugin API of 0.51.0: the entry is read here, as `create` would. */
     @Override
     public List<Problem> validate(ObjectNode node) {
         try {

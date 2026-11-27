@@ -20,8 +20,8 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The typed {@link Settings}, with the defaults and the values derived from them. The process environment is read by
- * {@link #from(Map)} and never here, so an embedding process controls what the settings are.
+ * The defaults and the values derived from the {@link Settings}. The process environment is read by {@link #from(Map)}
+ * and nowhere else, so an embedding process controls what the settings are.
  */
 public final class Config {
 

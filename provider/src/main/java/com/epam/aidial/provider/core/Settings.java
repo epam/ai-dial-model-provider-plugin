@@ -22,15 +22,12 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Every setting of the service, each with the one type it is read as: an integer, a string, an adapter, or for the
- * session tags an object of strings. The adapter an entry of DIAL Core's configuration serves is one of them, and the
- * only one the process environment does not hold. A setting that is not set is {@code null}, and so is one set to JSON
- * {@code null}; the defaults are {@link Config}'s. There is no other setting: a name that is not one of these is
- * refused by {@link #of}, and ignored by {@link #from}, as the process environment holds names of its own.
+ * Every setting of the service. A setting that is not set is {@code null}, and so is one set to JSON {@code null}; the
+ * defaults are {@link Config}'s. A name that is no setting is refused by {@link #of}, and ignored by {@link #from}, as
+ * the process environment holds names of its own.
  *
- * <p>An entry of DIAL Core's configuration gives them as JSON ({@link #of}); the process environment gives them as
- * text ({@link #from}). Either way, the first setting that is refused, in the order below, is reported by a
- * {@link ConfigException} that names the setting, not its value: it may be a credential.
+ * <p>The first setting that is refused, in the order below, is reported by a {@link ConfigException} that names the
+ * setting and not its value, which may be a credential.
  */
 @JsonClassDescription("The settings of a model provider.")
 public record Settings(
@@ -220,9 +217,8 @@ public record Settings(
     private static final String TAGS = "AWS_SESSION_TAGS";
 
     /**
-     * Lax in what it reads, as the schema is the strict one: text is an integer when it reads as one, and a number is
-     * the text of a string. An empty text is no integer, and a number is no adapter: its position in the enum is not
-     * its name.
+     * Lax, as the schema is the strict one: text is an integer when it reads as one, and a number is the text of a
+     * string. Not an empty text as an integer, and not a number as an adapter: its place in the enum is not its name.
      */
     private static final ObjectMapper MAPPER = mapper();
 
@@ -234,7 +230,7 @@ public record Settings(
         return mapper;
     }
 
-    /** A negative interval is no heartbeat, as 0. */
+    /** A negative interval turns the heartbeat off, as 0 does. */
     public Settings {
         if (sseHeartbeatInterval != null && sseHeartbeatInterval < 0) {
             sseHeartbeatInterval = 0;
@@ -242,8 +238,8 @@ public record Settings(
     }
 
     /**
-     * The settings of a process environment: the names of the settings, as text. Other names are ignored. A process
-     * serves every adapter, so {@link #adapter()} is the first one, and nothing reads it.
+     * The settings of a process environment, which serves every adapter: {@link #adapter()} is the first one, and
+     * nothing reads it.
      *
      * @throws ConfigException for the first setting that is refused
      */
@@ -252,10 +248,9 @@ public record Settings(
     }
 
     /**
-     * The settings of an entry, and for the ones it leaves out, or sets to {@code null}, those of an environment.
+     * The settings of an entry, and for the ones it leaves out, those of an environment.
      *
-     * @throws ConfigException for a missing adapter, for a name that is no setting, and for the first setting that is
-     *     refused
+     * @throws ConfigException for the first setting that is refused
      */
     public static Settings of(ObjectNode entry, Map<String, String> environment) {
         try {
@@ -265,10 +260,7 @@ public record Settings(
         }
     }
 
-    /**
-     * The settings of the entry, over the settings of the environment: its names, but the adapter, with the text they
-     * hold, which for the session tags is the JSON of an object. A {@code null} of the entry is no setting.
-     */
+    /** The environment's settings but the adapter, under the entry's. */
     private static ObjectNode mergeWithEnvironment(ObjectNode entry, Map<String, String> environment) {
         ObjectNode merged = MAPPER.createObjectNode();
         Arrays.stream(Settings.class.getRecordComponents())
@@ -281,10 +273,7 @@ public record Settings(
         return merged;
     }
 
-    /**
-     * The text of a setting in the environment as JSON: the session tags are the JSON of an object. Text that is none
-     * stays text, which Jackson refuses where it reads the setting.
-     */
+    /** The session tags are the JSON of an object in the environment. */
     private static JsonNode environment(String name, String text) {
         if (name.equals(TAGS)) {
             try {
@@ -293,16 +282,13 @@ public record Settings(
                     return tags;
                 }
             } catch (JsonProcessingException e) {
-                // Text, then
+                // Stays text, which Jackson refuses where it reads the setting
             }
         }
         return MAPPER.getNodeFactory().textNode(text);
     }
 
-    /**
-     * The first setting Jackson refused, or the settings as a whole when it names none. Without the cause: the message
-     * of Jackson holds the value, which may be a credential.
-     */
+    /** Without the cause: the message of Jackson holds the value, which may be a credential. */
     private static ConfigException invalid(JsonProcessingException e) {
         if (e instanceof JsonMappingException mapping) {
             for (Throwable cause = mapping; cause != null; cause = cause.getCause()) {

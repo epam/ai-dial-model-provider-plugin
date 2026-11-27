@@ -12,7 +12,6 @@ public enum Adapter {
     @JsonProperty("bedrock")
     BEDROCK;
 
-    /** The adapter's name in the settings and in the path. */
     public String value() {
         return name().toLowerCase(Locale.ROOT);
     }

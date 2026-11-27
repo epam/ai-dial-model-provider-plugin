@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-/** The schemas DIAL Core checks the settings of an entry against, before it asks the provider to validate them. */
 class ProviderSchemasTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

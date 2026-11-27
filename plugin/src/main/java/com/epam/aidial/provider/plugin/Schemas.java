@@ -10,9 +10,8 @@ import com.github.victools.jsonschema.module.jackson.JacksonModule;
 import com.github.victools.jsonschema.module.jackson.JacksonOption;
 
 /**
- * The JSON Schema (draft-07) of a settings model, derived from its Jackson annotations: each setting has the type of
- * its Java type, and no setting but the model's own is accepted. The schema is strict about what an entry asks for;
- * reading the entry is lax.
+ * The JSON Schema (draft-07) of a settings model, derived from its Jackson annotations. It is the strict one: reading
+ * an entry is lax.
  */
 final class Schemas {
 

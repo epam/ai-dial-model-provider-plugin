@@ -30,7 +30,7 @@ dependencies {
     compileOnly "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
     compileOnly "org.slf4j:slf4j-api:${slf4j_version}"
     implementation project(':provider')
-    // The settings' JSON Schemas come from the settings' Jackson models; Jackson itself is DIAL Core's.
+    // Jackson itself is DIAL Core's, so it is not bundled.
     implementation "com.github.victools:jsonschema-generator:${victools_jsonschema_version}"
     implementation "com.github.victools:jsonschema-module-jackson:${victools_jsonschema_version}"
 

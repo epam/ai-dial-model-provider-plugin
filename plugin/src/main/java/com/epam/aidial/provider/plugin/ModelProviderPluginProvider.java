@@ -4,7 +4,9 @@ import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.provider.ModelProviders;
 import com.epam.aidial.provider.api.ConfigException;
+import com.epam.aidial.provider.core.Adapter;
 import com.epam.aidial.provider.core.Config;
+import com.epam.aidial.provider.core.Settings;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
 import java.util.List;
@@ -38,26 +40,25 @@ public final class ModelProviderPluginProvider implements PluginProvider {
     }
 
     public ObjectNode settingsSchema() {
-        return Schemas.modelProvider();
+        return Schemas.of(Settings.class);
     }
 
     /** Checks what DIAL Core's schema check would, and the settings' own checks. */
     @Override
     public List<Problem> validate(ObjectNode node) {
         try {
-            Config.from(ModelProviderSettings.of(node, environment).settings());
+            Config.from(Settings.of(node, environment));
             return List.of();
         } catch (ConfigException e) {
-            boolean entry = ModelProviderSettings.ADAPTER.equals(e.setting()) || node.hasNonNull(e.setting());
+            boolean entry = Settings.ADAPTER.equals(e.setting()) || node.hasNonNull(e.setting());
             return List.of(new Problem(entry ? e.setting() : "", e.getMessage()));
         }
     }
 
     @Override
     public Plugin create(ObjectNode node, Vertx vertx) {
-        ModelProviderSettings settings = ModelProviderSettings.of(node, environment);
-        Config config = Config.from(settings.settings());
+        Settings settings = Settings.of(node, environment);
         return new ModelProviderPlugin(
-                vertx, "/compat/" + settings.adapter().value(), ModelProviders.create(vertx, config));
+                vertx, "/compat/" + settings.adapter().value(), ModelProviders.create(vertx, Config.from(settings)));
     }
 }

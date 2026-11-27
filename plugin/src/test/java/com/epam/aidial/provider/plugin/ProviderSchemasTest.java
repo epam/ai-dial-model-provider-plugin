@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.epam.aidial.provider.ModelProviders;
+import com.epam.aidial.provider.core.Adapter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -61,12 +61,14 @@ class ProviderSchemasTest {
     void adaptersAreTheOnesThereAre() {
         JsonNode adapter = modelProvider.get("properties").get("adapter");
         assertEquals(
-                ModelProviders.ADAPTERS, MAPPER.convertValue(adapter.get("enum"), new TypeReference<Set<String>>() {}));
+                Set.of("openai", "vertexai", "bedrock"),
+                MAPPER.convertValue(adapter.get("enum"), new TypeReference<Set<String>>() {}));
     }
 
     @Test
     void modelProviderEntryNamesAnAdapter() throws Exception {
-        for (String adapter : ModelProviders.ADAPTERS) {
+        for (Adapter each : Adapter.values()) {
+            String adapter = each.value();
             assertEquals(List.of(), errors(modelProvider, "{\"adapter\": \"%s\"}".formatted(adapter)), adapter);
         }
         assertEquals(List.of(": required property 'adapter' not found"), errors(modelProvider, "{}"));
@@ -84,17 +86,14 @@ class ProviderSchemasTest {
     }
 
     @Test
-    void everySettingHasOneTypeAndNoOtherSettingIsAccepted() throws Exception {
-        JsonNode schema = modelProvider;
-        assertEquals(false, schema.get("additionalProperties").asBoolean(true));
-        schema.get("properties")
-                .forEach(property -> assertTrue(property.get("type").isTextual(), property.toString()));
+    void everySettingHasOneTypeAndNoOtherSettingIsAccepted() {
+        assertEquals(false, modelProvider.get("additionalProperties").asBoolean(true));
+        JsonNode properties = modelProvider.get("properties");
+        properties.forEach(property -> assertTrue(property.get("type").isTextual(), property.toString()));
         assertEquals(
-                "integer",
-                schema.get("properties").get("HTTP_MAX_CONNECTIONS").get("type").asText());
-        assertEquals(
-                "string", schema.get("properties").get("DIAL_URL").get("type").asText());
-        JsonNode tags = schema.get("properties").get("AWS_SESSION_TAGS");
+                "integer", properties.get("HTTP_MAX_CONNECTIONS").get("type").asText());
+        assertEquals("string", properties.get("DIAL_URL").get("type").asText());
+        JsonNode tags = properties.get("AWS_SESSION_TAGS");
         assertEquals("object", tags.get("type").asText());
         assertEquals("string", tags.get("additionalProperties").get("type").asText());
     }
@@ -104,15 +103,16 @@ class ProviderSchemasTest {
         String settings =
                 """
                 {"adapter": "bedrock", "HTTP_MAX_CONNECTIONS": 10, "HTTP_POOL_TIMEOUT": 10, "NO_PROXY": "a,b",
-                 "AWS_SESSION_TAGS": {"team": "UserInfo.team"}, "http_proxy": "http://proxy"}
+                 "SSE_HEARTBEAT_INTERVAL": 0, "AWS_SESSION_TAGS": {"team": "UserInfo.team"},
+                 "http_proxy": "http://proxy"}
                 """;
         assertEquals(List.of(), errors(modelProvider, settings));
         assertEquals(
                 List.of("/HTTP_MAX_CONNECTIONS: string found, integer expected"),
                 errors(modelProvider, "{\"adapter\": \"openai\", \"HTTP_MAX_CONNECTIONS\": \"10\"}"));
         assertEquals(
-                List.of("/HTTP_MAX_CONNECTIONS: array found, integer expected"),
-                errors(modelProvider, "{\"adapter\": \"openai\", \"HTTP_MAX_CONNECTIONS\": [1]}"));
+                List.of("/HTTP_MAX_CONNECTIONS: number found, integer expected"),
+                errors(modelProvider, "{\"adapter\": \"openai\", \"HTTP_MAX_CONNECTIONS\": 1.5}"));
         assertEquals(
                 List.of("/DIAL_URL: integer found, string expected"),
                 errors(modelProvider, "{\"adapter\": \"openai\", \"DIAL_URL\": 1}"));

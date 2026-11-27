@@ -1,15 +1,15 @@
 package com.epam.aidial.provider.core;
 
 import com.epam.aidial.provider.api.ConfigException;
-import com.epam.aidial.provider.json.Json;
 import com.fasterxml.jackson.annotation.JsonClassDescription;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.cfg.CoercionAction;
 import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
@@ -18,17 +18,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.type.LogicalType;
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Every setting the service reads, each with the one type it is read as: an integer, a string, or for the session tags
- * an object of strings. A setting that is not set is {@code null}, and so is one set to JSON {@code null}; the defaults
- * are {@link Config}'s. There is no other setting: a name that is not one of these is refused by {@link #of}, and
- * ignored by {@link #from}, as the process environment holds names of its own.
+ * Every setting of the service, each with the one type it is read as: an integer, a string, an adapter, or for the
+ * session tags an object of strings. The adapter an entry of DIAL Core's configuration serves is one of them, and the
+ * only one the process environment does not hold. A setting that is not set is {@code null}, and so is one set to JSON
+ * {@code null}; the defaults are {@link Config}'s. There is no other setting: a name that is not one of these is
+ * refused by {@link #of}, and ignored by {@link #from}, as the process environment holds names of its own.
  *
  * <p>An entry of DIAL Core's configuration gives them as JSON ({@link #of}); the process environment gives them as
  * text ({@link #from}). Either way, the first setting that is refused, in the order below, is reported by a
@@ -36,6 +34,10 @@ import org.jspecify.annotations.Nullable;
  */
 @JsonClassDescription("The settings of a model provider.")
 public record Settings(
+        @JsonProperty(value = ADAPTER, required = true)
+                @JsonPropertyDescription(
+                        "The cloud API the entry serves: openai (Azure OpenAI and OpenAI), vertexai (Anthropic on Vertex AI) or bedrock (Anthropic on Amazon Bedrock). Not a setting of the process environment.")
+                Adapter adapter,
         @JsonProperty("HTTP_MAX_CONNECTIONS")
                 @JsonPropertyDescription(
                         "Upstream calls in flight per adapter. Adapters: openai, vertexai. Default: 1000 for openai, 250 for vertexai.")
@@ -65,9 +67,10 @@ public record Settings(
                         "Seconds of silence in a Responses stream before a ': ping' comment; 0 turns it off. Adapter: openai. Default: 0.")
                 @Nullable
                 Integer sseHeartbeatInterval,
-        @JsonProperty("AWS_SESSION_TAGS")
+        @JsonProperty(TAGS)
                 @JsonPropertyDescription(
-                        "Tags of the session of an assumed role: an object of tag keys to Bedrock.modelId or UserInfo.<path>. In the process environment, its JSON. Adapter: bedrock.")
+                        "Tags of the session of an assumed role: an object of tag keys to Bedrock.modelId or UserInfo.<path>. In the process environment, the JSON of the object. Adapter: bedrock.")
+                @JsonSetter(contentNulls = Nulls.FAIL)
                 @Nullable
                 Map<String, String> awsSessionTags,
         @JsonProperty("HTTP_PROXY")
@@ -212,129 +215,111 @@ public record Settings(
                 @Nullable
                 String awsProfile) {
 
-    private static final String HEARTBEAT = "SSE_HEARTBEAT_INTERVAL";
+    public static final String ADAPTER = "adapter";
+
     private static final String TAGS = "AWS_SESSION_TAGS";
 
-    /** No coercion: a setting of another type than its own is refused, not converted. */
+    /**
+     * Lax in what it reads, as the schema is the strict one: text is an integer when it reads as one, and a number is
+     * the text of a string. An empty text is no integer, and a number is no adapter: its position in the enum is not
+     * its name.
+     */
     private static final ObjectMapper MAPPER = mapper();
 
     private static ObjectMapper mapper() {
         ObjectMapper mapper = JsonMapper.builder()
-                .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
-                .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+                .enable(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
                 .build();
-        mapper.coercionConfigFor(LogicalType.Textual)
-                .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
-                .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
-                .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail);
+        mapper.coercionConfigFor(LogicalType.Integer).setCoercion(CoercionInputShape.EmptyString, CoercionAction.Fail);
         return mapper;
     }
 
-    private static final List<RecordComponent> COMPONENTS = Arrays.asList(Settings.class.getRecordComponents());
-    private static final Set<String> NAMES =
-            COMPONENTS.stream().map(Settings::name).collect(Collectors.toUnmodifiableSet());
-
+    /** A negative interval is no heartbeat, as 0. */
     public Settings {
         if (sseHeartbeatInterval != null && sseHeartbeatInterval < 0) {
-            throw new ConfigException(HEARTBEAT, mustBe(HEARTBEAT, Integer.class));
-        }
-        if (awsSessionTags != null && awsSessionTags.containsValue(null)) {
-            throw new ConfigException(TAGS, mustBe(TAGS, Map.class));
+            sseHeartbeatInterval = 0;
         }
     }
 
     /**
-     * The settings of a process environment: the names of the settings, as text. Other names are ignored.
+     * The settings of a process environment: the names of the settings, as text. Other names are ignored. A process
+     * serves every adapter, so {@link #adapter()} is the first one, and nothing reads it.
      *
      * @throws ConfigException for the first setting that is refused
      */
     public static Settings from(Map<String, String> environment) {
-        return of(MAPPER.createObjectNode(), environment);
+        return of(MAPPER.createObjectNode().put(ADAPTER, Adapter.values()[0].value()), environment);
     }
 
     /**
      * The settings of an entry, and for the ones it leaves out, or sets to {@code null}, those of an environment.
      *
-     * @throws ConfigException for a name that is no setting, and for the first setting that is refused
+     * @throws ConfigException for a missing adapter, for a name that is no setting, and for the first setting that is
+     *     refused
      */
     public static Settings of(ObjectNode entry, Map<String, String> environment) {
-        for (String name : (Iterable<String>) entry::fieldNames) {
-            if (!NAMES.contains(name)) {
-                throw new ConfigException(name, name + " is not a setting");
-            }
-        }
-        ObjectNode merged = MAPPER.createObjectNode();
-        for (RecordComponent component : COMPONENTS) {
-            String name = name(component);
-            JsonNode value = entry.get(name);
-            if (value != null && !value.isNull()) {
-                merged.set(name, value);
-            } else if (environment.get(name) != null) {
-                merged.set(name, text(name, component.getType(), environment.get(name)));
-            }
-        }
         try {
-            return MAPPER.treeToValue(merged, Settings.class);
+            return MAPPER.treeToValue(mergeWithEnvironment(entry, environment), Settings.class);
         } catch (JsonProcessingException e) {
-            Throwable cause = e;
-            while (cause != null) {
-                if (cause instanceof ConfigException config) {
-                    throw config;
-                }
-                cause = cause.getCause();
-            }
-            String name = e instanceof JsonMappingException mapping
-                            && !mapping.getPath().isEmpty()
-                    ? mapping.getPath().getFirst().getFieldName()
-                    : "";
-            // Without the cause: the message of Jackson holds the value
-            throw new ConfigException(name, name + " must be " + kind(name, typeOf(name)));
+            throw invalid(e);
         }
     }
 
-    /** A setting of the environment as the JSON of its type. */
-    private static JsonNode text(String name, Class<?> type, String text) {
-        if (type == Integer.class) {
+    /**
+     * The settings of the entry, over the settings of the environment: its names, but the adapter, with the text they
+     * hold, which for the session tags is the JSON of an object. A {@code null} of the entry is no setting.
+     */
+    private static ObjectNode mergeWithEnvironment(ObjectNode entry, Map<String, String> environment) {
+        ObjectNode merged = MAPPER.createObjectNode();
+        Arrays.stream(Settings.class.getRecordComponents())
+                .map(Settings::name)
+                .filter(name -> !name.equals(ADAPTER) && environment.containsKey(name))
+                .forEach(name -> merged.set(name, environment(name, environment.get(name))));
+        entry.properties().stream()
+                .filter(property -> !property.getValue().isNull())
+                .forEach(property -> merged.set(property.getKey(), property.getValue()));
+        return merged;
+    }
+
+    /**
+     * The text of a setting in the environment as JSON: the session tags are the JSON of an object. Text that is none
+     * stays text, which Jackson refuses where it reads the setting.
+     */
+    private static JsonNode environment(String name, String text) {
+        if (name.equals(TAGS)) {
             try {
-                return MAPPER.getNodeFactory().numberNode(Integer.parseInt(text));
-            } catch (NumberFormatException e) {
-                throw new ConfigException(name, mustBe(name, type), e);
-            }
-        }
-        if (type == Map.class) {
-            try {
-                return MAPPER.valueToTree(Json.parseStringMap(text));
-            } catch (Json.ParseException e) {
-                throw new ConfigException(name, mustBe(name, type), e);
+                JsonNode tags = MAPPER.readTree(text);
+                if (!tags.isMissingNode()) {
+                    return tags;
+                }
+            } catch (JsonProcessingException e) {
+                // Text, then
             }
         }
         return MAPPER.getNodeFactory().textNode(text);
     }
 
-    private static Class<?> typeOf(String name) {
-        return COMPONENTS.stream()
-                .filter(component -> name(component).equals(name))
-                .findFirst()
-                .map(RecordComponent::getType)
-                .orElse(String.class);
+    /**
+     * The first setting Jackson refused, or the settings as a whole when it names none. Without the cause: the message
+     * of Jackson holds the value, which may be a credential.
+     */
+    private static ConfigException invalid(JsonProcessingException e) {
+        if (e instanceof JsonMappingException mapping) {
+            for (Throwable cause = mapping; cause != null; cause = cause.getCause()) {
+                if (cause instanceof ConfigException config) {
+                    return config;
+                }
+            }
+            if (!mapping.getPath().isEmpty()) {
+                String name = mapping.getPath().getFirst().getFieldName();
+                return new ConfigException(name, name + " is invalid");
+            }
+        }
+        return new ConfigException("", "the settings are invalid");
     }
 
     private static String name(RecordComponent component) {
         return component.getAccessor().getAnnotation(JsonProperty.class).value();
-    }
-
-    private static String mustBe(String name, Class<?> type) {
-        return name + " must be " + kind(name, type);
-    }
-
-    private static String kind(String name, Class<?> type) {
-        if (name.equals(HEARTBEAT)) {
-            return "a non-negative integer";
-        }
-        if (type == Integer.class) {
-            return "an integer";
-        }
-        return type == Map.class ? "a JSON object of strings" : "a string";
     }
 
     /** Prints no setting: one may be a credential. */

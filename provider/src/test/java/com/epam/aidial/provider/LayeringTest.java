@@ -26,7 +26,7 @@ class LayeringTest {
             """
             (root) -> anthropic, core, credentials, openai, translation, upstream
             anthropic -> api, core, credentials, json, upstream
-            core -> api, json, upstream
+            core -> api, upstream
             json -> api
             credentials -> core, json, upstream
             openai -> api, core, credentials, json, upstream

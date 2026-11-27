@@ -1,10 +1,10 @@
-package com.epam.aidial.provider.plugin;
+package com.epam.aidial.provider.core;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Locale;
 
-/** The adapters a model-provider entry serves, each below {@code /compat/<name>}. */
-enum Adapter {
+/** The adapters of the service, each below {@code /compat/<name>}. */
+public enum Adapter {
     @JsonProperty("openai")
     OPENAI,
     @JsonProperty("vertexai")
@@ -13,7 +13,7 @@ enum Adapter {
     BEDROCK;
 
     /** The adapter's name in the settings and in the path. */
-    String value() {
+    public String value() {
         return name().toLowerCase(Locale.ROOT);
     }
 }

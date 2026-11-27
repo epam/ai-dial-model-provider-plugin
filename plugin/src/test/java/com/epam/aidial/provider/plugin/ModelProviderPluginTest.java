@@ -13,6 +13,7 @@ import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.provider.ModelProviders;
+import com.epam.aidial.provider.core.Adapter;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.HttpServerShim;
@@ -81,11 +82,28 @@ class ModelProviderPluginTest {
     }
 
     @Test
+    void entryNamesOneAdapterThereIs() {
+        ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
+        assertEquals(
+                new PluginProvider.Problem("adapter", "adapter is invalid"),
+                single(provider.validate(settings().put("HTTP_MAX_CONNECTIONS", 10))));
+        assertEquals(
+                new PluginProvider.Problem("adapter", "adapter is invalid"),
+                single(provider.validate(settings("adapter", "nope"))));
+        assertEquals(
+                new PluginProvider.Problem("SOMETHING_NEW", "SOMETHING_NEW is invalid"),
+                single(provider.validate(settings("adapter", "openai", "SOMETHING_NEW", "x"))));
+        for (Adapter each : Adapter.values()) {
+            String adapter = each.value();
+            assertEquals(List.of(), provider.validate(settings("adapter", adapter)), adapter);
+        }
+    }
+
+    @Test
     void invalidSettingIsRejected() {
         PluginProvider.Problem problem = single(new ModelProviderPluginProvider(Map.of())
                 .validate(settings("adapter", "openai", "HTTP_MAX_CONNECTIONS", "many")));
-        assertEquals(
-                new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"), problem);
+        assertEquals(new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS is invalid"), problem);
 
         ModelProviderPluginProvider badEnvironment =
                 new ModelProviderPluginProvider(Map.of("HTTP_MAX_CONNECTIONS", "many"));
@@ -109,7 +127,7 @@ class ModelProviderPluginTest {
         PluginProvider.Problem json = single(new ModelProviderPluginProvider(Map.of())
                 .validate(settings("adapter", "bedrock", "AWS_SESSION_TAGS", "x")));
         assertEquals("AWS_SESSION_TAGS", json.path(), "a start-time check, whatever the entry's adapter");
-        assertTrue(json.message().contains("must be a JSON object of strings"), json.message());
+        assertEquals("AWS_SESSION_TAGS is invalid", json.message());
     }
 
     @Test
@@ -119,10 +137,6 @@ class ModelProviderPluginTest {
         object.putObject("AWS_SESSION_TAGS").put("team", "a");
         assertEquals(List.of(), provider.validate(object), "the session tags are an object");
 
-        assertEquals(
-                new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"),
-                single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", 1.5))),
-                "an integer is not a fraction");
         assertEquals(
                 "HTTP_MAX_CONNECTIONS",
                 single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", true)))

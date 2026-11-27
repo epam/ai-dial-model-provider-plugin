@@ -108,8 +108,8 @@ One entry per adapter you use:
 - A translator is an entry of its own type, `translator`, with its own settings: see
   [Messages API for a Responses model](#messages-api-for-a-responses-model).
 - Other settings are the [variables](#settings) the plugin reads, by name, and no other name is accepted. A variable
-  has one type: an integer for the connection, timeout and heartbeat settings, an object of strings for
-  `AWS_SESSION_TAGS`, a string for the rest. `null` is the same as leaving the variable out.
+  is an integer (the connection, timeout and heartbeat settings), an object of strings (`AWS_SESSION_TAGS`) or a string
+  (the rest). `null` is the same as leaving the variable out.
 - Variables not set here come from DIAL Core's environment. **Keep credentials there**: DIAL Core returns settings
   as written through its API.
 - Settings apply from the next request, no restart. A new jar needs a restart.

@@ -93,7 +93,7 @@ One entry per adapter you use:
   "plugins": {
     "model-provider-bedrock": {
       "type": "model-provider",
-      "settings": { "adapter": "bedrock", "HTTP_MAX_CONNECTIONS": "2000" }
+      "settings": { "adapter": "bedrock", "HTTP_MAX_CONNECTIONS": 2000 }
     },
     "model-provider-openai": {
       "type": "model-provider",
@@ -107,8 +107,9 @@ One entry per adapter you use:
   (see [Upstreams](#upstreams)).
 - A translator is an entry of its own type, `translator`, with its own settings: see
   [Messages API for a Responses model](#messages-api-for-a-responses-model).
-- Other settings are the [variables](#settings), by name. Values can be strings, numbers or booleans. `null` unsets a
-  variable.
+- Other settings are the [variables](#settings) the plugin reads, by name, and no other name is accepted. A variable
+  is an integer (the connection, timeout and heartbeat settings), an object of strings (`AWS_SESSION_TAGS`) or a string
+  (the rest). `null` is the same as leaving the variable out.
 - Variables not set here come from DIAL Core's environment. **Keep credentials there**: DIAL Core returns settings
   as written through its API.
 - Settings apply from the next request, no restart. A new jar needs a restart.
@@ -280,7 +281,7 @@ Google's application default credentials.
 | `ANTHROPIC_MAX_CONNECTIONS`, `ANTHROPIC_POOL_TIMEOUT`                                    | bedrock           | `1000`, `10`                                   | The same                                                                                            |
 | `REQUEST_TIMEOUT_SECONDS`                                                                | bedrock           | `600`                                          | Wait for response headers and for each body read                                                    |
 | `SSE_HEARTBEAT_INTERVAL`                                                                 | openai            | `0` (off)                                      | Seconds of silence in a Responses stream before a `: ping`                                          |
-| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`                                                  | all               | unset                                          | Proxy for upstream calls                                                                            |
+| `http_proxy`, `https_proxy`, `no_proxy`                                                  | all               | unset                                          | Proxy for upstream calls. In the process environment, the upper-case name is read when the lower-case one is not set |
 | `DIAL_URL`                                                                               | all               | unset                                          | DIAL Core URL for the user info of AWS session tags                                                 |
 | `AZURE_OPEN_AI_SCOPE`                                                                    | openai            | `https://cognitiveservices.azure.com/.default` | Scope of the Azure AD token                                                                         |
 | `AWS_BEDROCK_BASE_URL`, `AWS_BEARER_TOKEN_BEDROCK`                                       | openai            | unset                                          | Bedrock Mantle base URL and bearer token, for Responses                                             |

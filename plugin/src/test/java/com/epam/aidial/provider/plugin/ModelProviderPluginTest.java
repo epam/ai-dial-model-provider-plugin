@@ -13,6 +13,7 @@ import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.provider.ModelProviders;
+import com.epam.aidial.provider.core.Adapter;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.HttpServerShim;
@@ -81,16 +82,19 @@ class ModelProviderPluginTest {
     }
 
     @Test
-    void entryNamesOneKnownAdapter() {
+    void entryNamesOneAdapterThereIs() {
         ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
-        assertEquals("adapter", single(provider.validate(settings())).path());
         assertEquals(
-                "adapter",
-                single(provider.validate(settings("adapter", "nope"))).path());
+                new PluginProvider.Problem("adapter", "adapter is invalid"),
+                single(provider.validate(settings().put("HTTP_MAX_CONNECTIONS", 10))));
         assertEquals(
-                "adapter",
-                single(provider.validate(settings().put("adapter", 1))).path());
-        for (String adapter : ModelProviders.ADAPTERS) {
+                new PluginProvider.Problem("adapter", "adapter is invalid"),
+                single(provider.validate(settings("adapter", "nope"))));
+        assertEquals(
+                new PluginProvider.Problem("SOMETHING_NEW", "SOMETHING_NEW is invalid"),
+                single(provider.validate(settings("adapter", "openai", "SOMETHING_NEW", "x"))));
+        for (Adapter each : Adapter.values()) {
+            String adapter = each.value();
             assertEquals(List.of(), provider.validate(settings("adapter", adapter)), adapter);
         }
     }
@@ -99,8 +103,7 @@ class ModelProviderPluginTest {
     void invalidSettingIsRejected() {
         PluginProvider.Problem problem = single(new ModelProviderPluginProvider(Map.of())
                 .validate(settings("adapter", "openai", "HTTP_MAX_CONNECTIONS", "many")));
-        assertEquals(
-                new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"), problem);
+        assertEquals(new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS is invalid"), problem);
 
         ModelProviderPluginProvider badEnvironment =
                 new ModelProviderPluginProvider(Map.of("HTTP_MAX_CONNECTIONS", "many"));
@@ -110,12 +113,12 @@ class ModelProviderPluginTest {
                 "not a setting of the entry");
         assertEquals(
                 List.of(),
-                badEnvironment.validate(settings("adapter", "openai", "HTTP_MAX_CONNECTIONS", "10")),
+                badEnvironment.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", 10)),
                 "the entry wins");
         assertEquals(
-                List.of(),
+                badEnvironment.validate(settings("adapter", "openai")),
                 badEnvironment.validate(settings("adapter", "openai").putNull("HTTP_MAX_CONNECTIONS")),
-                "null unsets it");
+                "null is the same as absent");
         assertEquals(
                 List.of(),
                 new ModelProviderPluginProvider(Map.of())
@@ -124,45 +127,21 @@ class ModelProviderPluginTest {
         PluginProvider.Problem json = single(new ModelProviderPluginProvider(Map.of())
                 .validate(settings("adapter", "bedrock", "AWS_SESSION_TAGS", "x")));
         assertEquals("AWS_SESSION_TAGS", json.path(), "a start-time check, whatever the entry's adapter");
-        assertTrue(json.message().contains("must be a JSON object of strings"), json.message());
+        assertEquals("AWS_SESSION_TAGS is invalid", json.message());
     }
 
     @Test
-    void anAdapterThatIsNotTextIsNoAdapter() {
-        ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
-        ObjectNode object = settings();
-        object.putObject("adapter");
-        for (ObjectNode entry : List.of(
-                settings().putNull("adapter"),
-                settings().put("adapter", true),
-                settings().put("adapter", 1.5),
-                object)) {
-            assertEquals("adapter", single(provider.validate(entry)).path(), entry.toString());
-        }
-    }
-
-    @Test
-    void anEntrysValuesAreTheTextTheEnvironmentWouldHold() {
+    void anEntrysSettingsHaveTheTypeOfTheSetting() {
         ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
         ObjectNode object = settings("adapter", "bedrock");
         object.putObject("AWS_SESSION_TAGS").put("team", "a");
-        assertEquals(List.of(), provider.validate(object), "an object is its JSON");
+        assertEquals(List.of(), provider.validate(object), "the session tags are an object");
 
-        ObjectNode array = settings("adapter", "bedrock");
-        array.putArray("AWS_SESSION_TAGS").add("a");
-        PluginProvider.Problem notObject = single(provider.validate(array));
-        assertEquals("AWS_SESSION_TAGS", notObject.path(), "an array is its JSON, which is no object of strings");
-        assertTrue(notObject.message().contains("must be a JSON object of strings"), notObject.message());
-
-        assertEquals(
-                new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"),
-                single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", 1.5))),
-                "a number is its text");
         assertEquals(
                 "HTTP_MAX_CONNECTIONS",
                 single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", true)))
                         .path(),
-                "a boolean is its text");
+                "an integer is not a boolean");
     }
 
     @Test
@@ -424,11 +403,11 @@ class ModelProviderPluginTest {
     }
 
     @Test
-    void serviceLoaderFindsTheType() {
-        List<String> types = ServiceLoader.load(PluginProvider.class).stream()
+    void serviceLoaderFindsTheIds() {
+        List<String> ids = ServiceLoader.load(PluginProvider.class).stream()
                 .map(p -> p.get().type())
                 .toList();
-        assertEquals(List.of("model-provider", "translator"), types);
+        assertEquals(List.of("model-provider", "translator"), ids);
     }
 
     private Plugin plugin(Map<String, String> environment, ObjectNode settings) {

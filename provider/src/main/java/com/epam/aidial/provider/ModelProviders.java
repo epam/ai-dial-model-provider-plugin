@@ -29,12 +29,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 public final class ModelProviders {
-
-    public static final Set<String> ADAPTERS = Set.of("openai", "vertexai", "bedrock");
 
     private ModelProviders() {}
 

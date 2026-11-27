@@ -19,9 +19,18 @@ public final class TranslatorPluginProvider implements PluginProvider {
         return "translator";
     }
 
+    public String description() {
+        return "Translates the Anthropic Messages API to the OpenAI Responses API.";
+    }
+
+    public ObjectNode settingsSchema() {
+        return Schemas.of(TranslatorSettings.class);
+    }
+
+    /** The schema checks the settings, and the translator reads none. */
     @Override
     public List<Problem> validate(ObjectNode node) {
-        return TranslatorSettings.problems(node);
+        return List.of();
     }
 
     @Override

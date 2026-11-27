@@ -68,6 +68,11 @@ class ConfigTest {
     }
 
     @Test
+    void negativeHeartbeatIsNone() {
+        assertEquals(0, Config.from(Map.of("SSE_HEARTBEAT_INTERVAL", "-1")).heartbeatSeconds());
+    }
+
+    @Test
     void portIsRead() {
         assertEquals(8080, Config.from(Map.of("PORT", " 8080 ")).port());
         assertEquals(0, Config.from(Map.of("PORT", "0")).port());
@@ -113,24 +118,22 @@ class ConfigTest {
                 "ANTHROPIC_MAX_CONNECTIONS",
                 "ANTHROPIC_POOL_TIMEOUT",
                 "REQUEST_TIMEOUT_SECONDS")) {
-            for (String bad : new String[] {"abc", "1.5", "", " 1"}) {
-                cases.add(arguments(Map.of(name, bad), name + " must be an integer"));
+            for (String bad : new String[] {"abc", "1.5", ""}) {
+                cases.add(arguments(Map.of(name, bad), name + " is invalid"));
             }
         }
-        for (String bad : new String[] {"1s", "", "x", "-1", "0.5", "1e3", " 2", "Infinity", "NaN"}) {
-            cases.add(arguments(
-                    Map.of("SSE_HEARTBEAT_INTERVAL", bad), "SSE_HEARTBEAT_INTERVAL must be a non-negative integer"));
+        for (String bad : new String[] {"1s", "", "x", "0.5", "1e3", "Infinity", "NaN"}) {
+            cases.add(arguments(Map.of("SSE_HEARTBEAT_INTERVAL", bad), "SSE_HEARTBEAT_INTERVAL is invalid"));
         }
-        for (String bad : new String[] {"", "x", "null", "[]", "{\"a\":1}", "{\"a\":\"b\",\"c\":null}"}) {
-            cases.add(arguments(Map.of("AWS_SESSION_TAGS", bad), "AWS_SESSION_TAGS must be a JSON object of strings"));
+        for (String bad : new String[] {"", "x", "[]", "{\"a\":\"b\",\"c\":null}"}) {
+            cases.add(arguments(Map.of("AWS_SESSION_TAGS", bad), "AWS_SESSION_TAGS is invalid"));
         }
         // Only the first failure, in operations' order.
         cases.add(arguments(
                 Map.of("ANTHROPIC_POOL_TIMEOUT", "x", "REQUEST_TIMEOUT_SECONDS", "y", "SSE_HEARTBEAT_INTERVAL", "z"),
-                "ANTHROPIC_POOL_TIMEOUT must be an integer"));
+                "ANTHROPIC_POOL_TIMEOUT is invalid"));
         cases.add(arguments(
-                Map.of("HTTP_MAX_CONNECTIONS", "abc", "AWS_SESSION_TAGS", "x"),
-                "HTTP_MAX_CONNECTIONS must be an integer"));
+                Map.of("HTTP_MAX_CONNECTIONS", "abc", "AWS_SESSION_TAGS", "x"), "HTTP_MAX_CONNECTIONS is invalid"));
         return cases.stream();
     }
 

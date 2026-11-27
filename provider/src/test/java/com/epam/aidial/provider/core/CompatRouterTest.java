@@ -143,7 +143,8 @@ class CompatRouterTest {
         Vertx vertx = Vertx.vertx();
         try {
             CompatRouter served = ModelProviders.create(vertx, Config.from(Map.of()));
-            for (String adapter : ModelProviders.ADAPTERS) {
+            for (Adapter each : Adapter.values()) {
+                String adapter = each.value();
                 AdapterResponse messages = served.handle(
                                 request(HttpMethod.POST, "/compat/" + adapter + "/anthropic/v1/messages", null))
                         .toCompletionStage()
@@ -166,7 +167,8 @@ class CompatRouterTest {
             }
             for (String path :
                     List.of("/openai/v1/responses", "/openai/responses", "/openai/v1/responses/input_tokens")) {
-                for (String adapter : ModelProviders.ADAPTERS) {
+                for (Adapter each : Adapter.values()) {
+                    String adapter = each.value();
                     AdapterResponse r =
                             await(served.handle(request(HttpMethod.POST, "/compat/" + adapter + path, null)));
                     assertEquals(adapter.equals("openai") ? 502 : 404, r.status(), adapter + path);

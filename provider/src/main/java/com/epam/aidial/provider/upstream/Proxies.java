@@ -14,8 +14,8 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.function.Function;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 public final class Proxies {
 
@@ -31,18 +31,19 @@ public final class Proxies {
     private final boolean noProxyAll;
 
     /**
-     * @param environment null when a setting is not set
-     * @throws ConfigException for a proxy URL or a NO_PROXY port Java cannot read; the message names the setting, not
+     * @param httpProxy null or empty when not set
+     * @param httpsProxy null or empty when not set
+     * @param noProxy null or empty when not set
+     * @throws ConfigException for a proxy URL or a no_proxy port Java cannot read; the message names the setting, not
      *     its value
      */
-    public Proxies(Function<String, String> environment) {
-        this.http = proxy("HTTP_PROXY", first(environment, "HTTP_PROXY", "http_proxy"));
-        this.https = proxy("HTTPS_PROXY", first(environment, "HTTPS_PROXY", "https_proxy"));
-        String exclusions = first(environment, "NO_PROXY", "no_proxy");
+    public Proxies(@Nullable String httpProxy, @Nullable String httpsProxy, @Nullable String noProxy) {
+        this.http = proxy("http_proxy", httpProxy);
+        this.https = proxy("https_proxy", httpsProxy);
         boolean all = false;
         List<Exclusion> entries = new ArrayList<>();
-        if (exclusions != null) {
-            for (String entry : exclusions.split(",")) {
+        if (noProxy != null) {
+            for (String entry : noProxy.split(",")) {
                 String e = entry.strip().toLowerCase(Locale.ROOT);
                 if (e.equals("*")) {
                     all = true;
@@ -74,7 +75,7 @@ public final class Proxies {
         } catch (NumberFormatException e) {
             // too many digits for a port: refused below, with no word of the value
         }
-        throw new ConfigException("NO_PROXY", "NO_PROXY has an entry with a port above " + MAX_PORT);
+        throw new ConfigException("no_proxy", "no_proxy has an entry with a port above " + MAX_PORT);
     }
 
     /** Null for a direct connection. */
@@ -106,20 +107,12 @@ public final class Proxies {
         };
     }
 
-    private static String first(Function<String, String> environment, String upper, String lower) {
-        String value = environment.apply(upper);
-        if (value == null || value.isEmpty()) {
-            value = environment.apply(lower);
-        }
-        return value == null || value.isEmpty() ? null : value;
-    }
-
     /**
      * A value Java cannot read leaves the {@link ConfigException}'s message and cause without it: it may hold the
      * proxy's password.
      */
     private static ProxyOptions proxy(String setting, String url) {
-        if (url == null) {
+        if (url == null || url.isEmpty()) {
             return null;
         }
         try {

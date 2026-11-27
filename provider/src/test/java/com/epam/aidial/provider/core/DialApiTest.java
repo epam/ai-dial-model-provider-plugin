@@ -10,6 +10,7 @@ import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
 import com.epam.aidial.provider.api.Handler;
+import com.epam.aidial.provider.api.RequestScope;
 import com.epam.aidial.provider.testing.MockUpstream;
 import com.epam.aidial.provider.translation.DialCoreHttp;
 import com.epam.aidial.provider.upstream.ClientGoneException;
@@ -83,7 +84,7 @@ class DialApiTest {
             Handler core = http(dial.url() + c.getKey());
             assertEquals(
                     "{\"roles\":[]}",
-                    await(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, NEVER))
+                    await(api.get(new RequestScope(NEVER, core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT))
                             .toString());
             MockUpstream.Seen seen = dial.last();
             assertEquals(c.getValue(), seen.path(), c.getKey());
@@ -101,7 +102,7 @@ class DialApiTest {
         };
         assertEquals(
                 "{\"roles\":[\"r\"]}",
-                await(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, NEVER))
+                await(api.get(new RequestScope(NEVER, core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT))
                         .toString());
         assertEquals(1, asked.size());
         AdapterRequest request = asked.get(0);
@@ -121,7 +122,7 @@ class DialApiTest {
                 new Body.Stream(new Chunks(List.of("{\"ro", "les\":[]}")).pipe())));
         assertEquals(
                 "{\"roles\":[]}",
-                await(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, NEVER))
+                await(api.get(new RequestScope(NEVER, core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT))
                         .toString());
     }
 
@@ -131,7 +132,7 @@ class DialApiTest {
         resets = 2;
         assertEquals(
                 "{\"roles\":[]}",
-                await(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, NEVER))
+                await(api.get(new RequestScope(NEVER, core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT))
                         .toString());
         assertEquals(3, calls.get());
 
@@ -139,7 +140,7 @@ class DialApiTest {
         resets = 3;
         DialApi.DownloadException e = assertInstanceOf(
                 DialApi.DownloadException.class,
-                failure(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, NEVER)));
+                failure(api.get(new RequestScope(NEVER, core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT)));
         assertNotNull(e.getCause(), "the transport failure that ended the attempts");
         assertEquals(3, calls.get());
     }
@@ -153,7 +154,7 @@ class DialApiTest {
         };
         DialApi.DownloadException e = assertInstanceOf(
                 DialApi.DownloadException.class,
-                failure(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, NEVER)));
+                failure(api.get(new RequestScope(NEVER, core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT)));
         assertEquals("the host is closed", e.getMessage());
         assertEquals(3, attempts.get());
     }
@@ -165,7 +166,7 @@ class DialApiTest {
         };
         assertEquals(
                 "bug",
-                failure(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, NEVER))
+                failure(api.get(new RequestScope(NEVER, core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT))
                         .getMessage());
     }
 
@@ -177,7 +178,7 @@ class DialApiTest {
             int before = dial.seen().size();
             assertEquals(
                     "DIAL answered " + status,
-                    failure(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, NEVER))
+                    failure(api.get(new RequestScope(NEVER, core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT))
                             .getMessage());
             assertEquals(before + 1, dial.seen().size(), status + " is not retried; a redirect is not followed");
         }
@@ -185,7 +186,11 @@ class DialApiTest {
         int before = dial.seen().size();
         assertEquals(
                 "DIAL answered 429",
-                failure(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT_AND_STATUS, NEVER))
+                failure(api.get(
+                                new RequestScope(NEVER, core),
+                                DialApi.USER_INFO,
+                                "k1",
+                                DialApi.Retry.TRANSPORT_AND_STATUS))
                         .getMessage());
         assertEquals(before + 3, dial.seen().size());
     }
@@ -202,7 +207,8 @@ class DialApiTest {
         });
         assertInstanceOf(
                 ClientGoneException.class,
-                failure(api.get(core, DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT, aborted.future())));
+                failure(api.get(
+                        new RequestScope(aborted.future(), core), DialApi.USER_INFO, "k1", DialApi.Retry.TRANSPORT)));
         assertEquals(1, calls.get());
     }
 

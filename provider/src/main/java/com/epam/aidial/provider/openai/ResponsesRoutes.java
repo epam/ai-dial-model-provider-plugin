@@ -125,8 +125,7 @@ public final class ResponsesRoutes implements Routes.Group {
                 endpoint == Endpoint.CREATE && CacheHeaders.asked(request.headers()) ? body.breakpoint() : null;
         // Not the request: it holds the body, which the callbacks below must not keep alive (see Unsent).
         Future<Void> aborted = request.aborted();
-        Future<Authorizer> authorizer =
-                auth.forRequest(target, request.headers(), request.core(), body.model(), aborted);
+        Future<Authorizer> authorizer = auth.forRequest(target, request.headers(), request.scope(), body.model());
 
         MultiMap headers = OpenAiHeaders.toUpstream(target, endpoint);
         Unsent unsent = new Unsent(body.bytes());

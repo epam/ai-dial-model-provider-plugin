@@ -1,6 +1,6 @@
 package com.epam.aidial.provider.credentials;
 
-import com.epam.aidial.provider.api.Handler;
+import com.epam.aidial.provider.api.RequestScope;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
 import com.epam.aidial.provider.json.Json;
@@ -86,14 +86,12 @@ public final class SessionTags {
      * model is null when the request has none (a route without a body, or a body whose model is no string). Fails with
      * a {@link CredentialsUnavailableException}, or ClientGoneException when the client goes.
      *
-     * @param core the {@link com.epam.aidial.provider.api.AdapterRequest#core() core} of the request: the user info
-     *     is fetched through it
+     * @param headers the request's headers: the user info is that of their API key
+     * @param scope   the request: the user info is fetched through its core
      */
-    public Future<AwsCredentials.Session> resolve(
-            MultiMap headers, Handler core, @Nullable String model, Future<Void> aborted) {
+    public Future<AwsCredentials.Session> resolve(MultiMap headers, RequestScope scope, @Nullable String model) {
         String modelValue = modelValue(model);
-        Future<Map<String, Object>> info =
-                userInfoTags.isEmpty() ? Future.succeededFuture() : userInfo(headers, core, aborted);
+        Future<Map<String, Object>> info = userInfoTags.isEmpty() ? Future.succeededFuture() : userInfo(headers, scope);
         return info.map(user -> fit(tagged(modelValue, user)))
                 .recover(e -> Future.failedFuture(
                         e instanceof ClientGoneException
@@ -115,7 +113,8 @@ public final class SessionTags {
      * A transport failure is retried, a status is not. Null when not fetched: no api-key, or a failure (logged); an
      * empty api-key fails the request.
      */
-    private Future<Map<String, Object>> userInfo(MultiMap headers, Handler core, Future<Void> aborted) {
+    private Future<Map<String, Object>> userInfo(MultiMap headers, RequestScope scope) {
+        Future<Void> aborted = scope.aborted();
         String key = headers.get("Api-Key");
         if (key == null) {
             log.warn("Skipping UserInfo AWS STS session tags; the request carries no DIAL API key");
@@ -125,7 +124,7 @@ public final class SessionTags {
             // the DIAL client refuses an empty key
             return Future.failedFuture(new IllegalStateException("empty api-key header"));
         }
-        return dial.get(core, DialApi.USER_INFO, key, DialApi.Retry.TRANSPORT, aborted)
+        return dial.get(scope, DialApi.USER_INFO, key, DialApi.Retry.TRANSPORT)
                 .map(body -> parseUserInfo(body.getBytes()))
                 .recover(ClientGoneException.unlessGone(aborted, e -> {
                     log.atWarn()

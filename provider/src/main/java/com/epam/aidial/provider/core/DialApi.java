@@ -3,7 +3,7 @@ package com.epam.aidial.provider.core;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.Handler;
+import com.epam.aidial.provider.api.RequestScope;
 import com.epam.aidial.provider.upstream.ClientGoneException;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import io.vertx.core.Future;
@@ -52,11 +52,11 @@ public final class DialApi {
      * Fails with a {@link DownloadException} (the last status or transport error), or with ClientGoneException once
      * {@code aborted} completes.
      *
-     * @param core the core of the request the call is made for
-     * @param path starts with {@code /}
+     * @param scope the request the call is made for: its core makes the call, and its client going stops it
+     * @param path  starts with {@code /}
      */
-    public Future<Buffer> get(Handler core, String path, String key, Retry retry, Future<Void> aborted) {
-        return attempt(core, path, key, retry, aborted, 1).compose(answer -> switch (answer) {
+    public Future<Buffer> get(RequestScope scope, String path, String key, Retry retry) {
+        return attempt(scope, path, key, retry, 1).compose(answer -> switch (answer) {
             case Answer.Response r ->
                 UpstreamClient.UpstreamResponse.isSuccess(r.status())
                         ? Future.succeededFuture(r.body())
@@ -66,11 +66,12 @@ public final class DialApi {
     }
 
     /** Resolves with the last answer, a 2xx or not, or the last failure as an {@code Answer.Failed}. */
-    private Future<Answer> attempt(Handler core, String path, String key, Retry retry, Future<Void> aborted, int n) {
+    private Future<Answer> attempt(RequestScope scope, String path, String key, Retry retry, int n) {
         MultiMap headers = MultiMap.caseInsensitiveMultiMap().set("Api-Key", key);
+        Future<Void> aborted = scope.aborted();
         AdapterRequest request =
-                new AdapterRequest(HttpMethod.GET, path, null, headers, Buffer.buffer(), aborted, core);
-        return Answers.call(core, request)
+                new AdapterRequest(HttpMethod.GET, path, null, headers, Buffer.buffer(), aborted, scope.core());
+        return Answers.call(scope.core(), request)
                 .compose(Bodies::whole)
                 .map(response -> (Answer) new Answer.Response(response.status(), body(response)))
                 .recover(e -> Future.succeededFuture(new Answer.Failed(e)))
@@ -83,7 +84,7 @@ public final class DialApi {
                         return Future.succeededFuture(answer);
                     }
                     Promise<Answer> next = Promise.promise();
-                    vertx.setTimer(backoffMillis(n), t -> attempt(core, path, key, retry, aborted, n + 1)
+                    vertx.setTimer(backoffMillis(n), t -> attempt(scope, path, key, retry, n + 1)
                             .onComplete(next));
                     return next.future();
                 });

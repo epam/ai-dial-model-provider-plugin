@@ -193,13 +193,13 @@ public final class AnthropicTargets {
             boolean role = !set.roleArn().isEmpty();
             if (role && tags != null) {
                 // The profile first: a request that cannot get the role's credentials makes no DIAL call.
-                BedrockCredentials.TaggedRole tagged = (headers, core, model, aborted) -> credentials
-                        .checkProfile(CredentialsUnavailableException.Source.AWS_ROLE, aborted)
+                BedrockCredentials.TaggedRole tagged = (headers, scope, model) -> credentials
+                        .checkProfile(CredentialsUnavailableException.Source.AWS_ROLE, scope.aborted())
                         .compose(v -> credentials.taggedProvider(
                                 set,
                                 region,
                                 client.setting(),
-                                tags.resolve(headers, core, model, aborted),
+                                tags.resolve(headers, scope, model),
                                 AwsCredentials.BEDROCK_ROLE_WINDOW));
                 return new Target.Bedrock(client, base, region, new BedrockCredentials.TaggedPerRequest(tagged));
             }

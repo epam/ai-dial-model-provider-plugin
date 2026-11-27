@@ -1,6 +1,6 @@
 package com.epam.aidial.provider.openai;
 
-import com.epam.aidial.provider.api.Handler;
+import com.epam.aidial.provider.api.RequestScope;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.credentials.Authorizer;
 import com.epam.aidial.provider.credentials.AwsCredentials;
@@ -36,18 +36,17 @@ final class UpstreamAuth {
      *
      * @param model null when absent or on an endpoint without a body
      */
-    Future<Authorizer> forRequest(
-            Target target, MultiMap clientHeaders, Handler core, @Nullable String model, Future<Void> aborted) {
-        return credentials(target, clientHeaders, core, model, aborted)
-                .map(authorizer -> bedrockAuth.checked(target, authorizer, aborted));
+    Future<Authorizer> forRequest(Target target, MultiMap clientHeaders, RequestScope scope, @Nullable String model) {
+        return credentials(target, clientHeaders, scope, model)
+                .map(authorizer -> bedrockAuth.checked(target, authorizer, scope.aborted()));
     }
 
     private Future<Authorizer> credentials(
-            Target t, MultiMap clientHeaders, Handler core, @Nullable String model, Future<Void> aborted) {
+            Target t, MultiMap clientHeaders, RequestScope scope, @Nullable String model) {
         Secret key = t.key();
         if (key != null && key.value().isEmpty()) {
             return t.bedrock() != null
-                    ? bedrockAuth.credentials(t, BedrockAuth.Key.EMPTY, null, clientHeaders, core, aborted)
+                    ? bedrockAuth.credentials(t, BedrockAuth.Key.EMPTY, null, clientHeaders, scope)
                     : Future.failedFuture(UpstreamRefusedException.misconfigured(MISSING_CREDENTIALS));
         }
         if (key != null) {
@@ -62,9 +61,9 @@ final class UpstreamAuth {
             return Future.failedFuture(UpstreamRefusedException.missingKey());
         }
         if (t.bedrock() != null) {
-            return bedrockAuth.credentials(t, BedrockAuth.Key.UNSET, model, clientHeaders, core, aborted);
+            return bedrockAuth.credentials(t, BedrockAuth.Key.UNSET, model, clientHeaders, scope);
         }
-        return azure.token(aborted).map(token -> header(t, "Authorization", "Bearer " + token));
+        return azure.token(scope.aborted()).map(token -> header(t, "Authorization", "Bearer " + token));
     }
 
     /**

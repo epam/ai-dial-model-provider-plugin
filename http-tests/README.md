@@ -20,7 +20,7 @@ http-tests/
 The service serves the Anthropic Messages API passthrough (`/anthropic/v1/messages`, `/count_tokens` below each
 mount) and the OpenAI Responses API passthrough (below the openai mount). The suite's prefix (`openai-*`, `vertexai-*`,
 `bedrock-*`) names the mount the case runs against. `OpenAiResponsesCasesTest` runs the cases of the Responses routes
-(`ResponsesRoutes.BASES` and below), and `AnthropicCasesTest` runs every other case, as written. A new case for a
+(`ResponsesRoutes.BASES` and below), `MessagesToResponsesCasesTest` those of the suite `translate`, and `AnthropicCasesTest` runs every other case, as written. A new case for a
 served route goes in a suite named for its mount.
 
 | Suite | What it covers |
@@ -29,6 +29,7 @@ served route goes in a suite named for its mount.
 | `openai-anthropic` | the Messages API through a provider named by `X-Upstream-Endpoint`: forwarding, cache affinity headers, streams, upstream errors, request validation, refused configuration, Azure AD failures |
 | `vertexai-anthropic` | Vertex AI, Azure Foundry and the platform behind the vertexai mount: URLs, body shaping, auth, streams, upstream errors, the beta flags and server tools dropped per cloud, validation |
 | `bedrock-anthropic` | Bedrock invoke-model (its event stream decoded to SSE, and cut half way), Mantle and the platform behind the bedrock mount: the same topics, SigV4, `_files/*.bin` event streams |
+| `translate` | the Messages API served for a Responses API upstream (`MessagesToResponsesCasesTest`): the request and the answer translated, one member at a time, streams, cache affinity, failures. `translate/_scenarios` are written once and run in every mode: `translate/adapter` (the openai mount calls the Responses route) and `translate/service` (`/openaiResponses` calls DIAL Core back over HTTP) and `translate/plugin` (a plugin entry calls DIAL Core through its host; `PluginCasesTest` in the plugin module, whose host calls the mock DIAL Core); each mode's directory has its `base.yaml` and thin files that include the scenarios with `mode` set (it prefixes the case names). Only what is of one mode is in its directory |
 | `openai-removed`, `vertexai-removed`, `bedrock-removed` | a handful of unserved routes (chat completions, embeddings, tokenize, configuration, the model list): each answers `404 {"detail":"Not Found"}` and calls nothing |
 
 Every other path answers `404`; the handful above checks it.

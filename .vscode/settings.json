@@ -4,6 +4,9 @@
   "editor.tabSize": 2,
   "editor.indentSize": 2,
   "editor.insertSpaces": true,
+  "[markdown]": {
+    "editor.formatOnSave": false
+  },
   "[java]": {
     "editor.defaultFormatter": "josevseb.google-java-format-for-vs-code",
     "editor.tabSize": 4,
@@ -26,5 +29,6 @@
   "java.format.settings.google.extra": "--palantir --skip-reflowing-long-strings",
   "java.compile.nullAnalysis.mode": "automatic",
   "java.configuration.updateBuildConfiguration": "automatic",
-  "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable"
+  "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable",
+  "cSpell.words": ["vertx"]
 }

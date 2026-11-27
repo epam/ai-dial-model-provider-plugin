@@ -30,7 +30,7 @@ class LayeringTest {
             json -> api
             credentials -> core, json, upstream
             openai -> api, core, credentials, json, upstream
-            translation -> api, core
+            translation -> anthropic, api, core, json, upstream
             upstream -> api
             """;
 

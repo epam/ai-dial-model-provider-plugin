@@ -50,7 +50,7 @@ public final class Main {
         Vertx vertx = vertx(openTelemetry);
         HttpServerShim shim;
         try {
-            shim = new HttpServerShim(ModelProviders.create(vertx, config));
+            shim = ModelProviders.server(vertx, config);
         } catch (ConfigException e) {
             log.error("invalid settings: {}", e.getMessage());
             vertx.close();

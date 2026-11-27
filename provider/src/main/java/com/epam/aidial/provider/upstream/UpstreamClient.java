@@ -94,7 +94,7 @@ public final class UpstreamClient {
         client.request(options).onComplete(ar -> {
             if (ar.failed()) {
                 done.run();
-                result.fail(aborted.isComplete() ? new ClientGoneException() : ar.cause());
+                result.fail(ClientGoneException.of(ar.cause(), aborted));
             } else {
                 exchange(ar.result(), method, body, aborted, done, result);
             }
@@ -162,7 +162,7 @@ public final class UpstreamClient {
                 result.fail(
                         timedOut.get()
                                 ? new UpstreamTimeoutException()
-                                : aborted.isComplete() ? new ClientGoneException() : response.cause());
+                                : ClientGoneException.of(response.cause(), aborted));
                 return;
             }
             IdleReadStream stream = new IdleReadStream(vertx, request, response.result(), readTimeoutMillis, done);
@@ -208,7 +208,7 @@ public final class UpstreamClient {
             Buffer whole = Buffer.buffer();
             stream.handler(whole::appendBuffer)
                     .endHandler(v -> promise.complete(whole))
-                    .exceptionHandler(e -> promise.fail(aborted.isComplete() ? new ClientGoneException() : e));
+                    .exceptionHandler(e -> promise.fail(ClientGoneException.of(e, aborted)));
             stream.resume();
             return promise.future();
         }

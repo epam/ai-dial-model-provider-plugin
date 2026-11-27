@@ -3,11 +3,11 @@ package com.epam.aidial.provider.translation;
 import static com.epam.aidial.provider.testing.MockUpstream.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.Routes;
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -36,7 +36,7 @@ class ApiDispatchTest {
         if (endpoint != null) {
             headers.add("X-Upstream-Endpoint", endpoint);
         }
-        AdapterResponse response = await(routes.handle(new AdapterRequest(
+        AdapterResponse response = await(routes.handle(Requests.of(
                 method,
                 path,
                 null,
@@ -48,7 +48,7 @@ class ApiDispatchTest {
 
     @Test
     void theUpstreamsApiDecidesWhoServesTheRoute() throws Exception {
-        ModelProvider responses = r -> answer("responses " + r.path());
+        Handler responses = r -> answer("responses " + r.path());
         Routes routes = Routes.of(new ApiDispatch(PATHS, MESSAGES, responses));
         for (String path : PATHS) {
             assertEquals(
@@ -69,14 +69,6 @@ class ApiDispatchTest {
                     send(routes, HttpMethod.POST, "/anthropic/v1/messages", endpoint),
                     String.valueOf(endpoint));
         }
-    }
-
-    @Test
-    void withoutResponsesHandlerEveryRequestGoesToThePassthrough() throws Exception {
-        Routes routes = Routes.of(new ApiDispatch(PATHS, MESSAGES, null));
-        assertEquals(
-                "200 messages /anthropic/v1/messages",
-                send(routes, HttpMethod.POST, "/anthropic/v1/messages", "https://h/openai/v1/responses"));
     }
 
     @Test

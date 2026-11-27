@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.epam.aidial.provider.api.AdapterResponse;
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerOptions;
@@ -28,10 +29,12 @@ class ModelProviderVerticleTest {
     void start() throws Exception {
         vertx = Vertx.vertx();
         port = freePort();
-        HttpServerShim shim = new HttpServerShim(request -> {
-            extraData.set(request.headers().get("X-Upstream-Extra-Data"));
-            return Future.succeededFuture(AdapterResponse.json(200, "{}"));
-        });
+        HttpServerShim shim = new HttpServerShim(
+                request -> {
+                    extraData.set(request.headers().get("X-Upstream-Extra-Data"));
+                    return Future.succeededFuture(AdapterResponse.json(200, "{}"));
+                },
+                Requests.NO_CORE);
         await(vertx.deployVerticle(
                 new ModelProviderVerticle(shim, ModelProviderVerticle.serverOptions("127.0.0.1", port))));
     }

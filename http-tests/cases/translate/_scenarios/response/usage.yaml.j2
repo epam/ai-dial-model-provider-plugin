@@ -1,0 +1,40 @@
+# The tokens of the answer, as Anthropic counts them: input_tokens leaves out what the cache read and wrote.
+---
+name: {{ (mode ~ ": " ~ "cache reads and writes are taken out of the input tokens") | tojson }}
+mocks:
+- response: {json: {usage: {input_tokens: 100, output_tokens: 5, input_tokens_details: {cached_tokens: 30, cache_write_tokens: 20}, output_tokens_details: {reasoning_tokens: 0}}}}
+expect: {json: {usage: {input_tokens: 50, output_tokens: 5, cache_read_input_tokens: 30, cache_creation_input_tokens: 20}}}
+---
+name: {{ (mode ~ ": " ~ "cache reads are capped by the input tokens") | tojson }}
+mocks:
+- response: {json: {usage: {input_tokens: 10, output_tokens: 5, input_tokens_details: {cached_tokens: 50, cache_write_tokens: 20}, output_tokens_details: {reasoning_tokens: 0}}}}
+expect: {json: {usage: {input_tokens: 0, output_tokens: 5, cache_read_input_tokens: 10, cache_creation_input_tokens: 0}}}
+---
+name: {{ (mode ~ ": " ~ "cache writes are capped by what the reads left") | tojson }}
+mocks:
+- response: {json: {usage: {input_tokens: 10, output_tokens: 5, input_tokens_details: {cached_tokens: 4, cache_write_tokens: 20}, output_tokens_details: {reasoning_tokens: 0}}}}
+expect: {json: {usage: {input_tokens: 0, output_tokens: 5, cache_read_input_tokens: 4, cache_creation_input_tokens: 6}}}
+---
+name: {{ (mode ~ ": " ~ "reasoning tokens are thinking tokens") | tojson }}
+mocks:
+- response: {json: {usage: {input_tokens: 10, output_tokens: 50, input_tokens_details: {cached_tokens: 0, cache_write_tokens: 0}, output_tokens_details: {reasoning_tokens: 40}}}}
+expect: {json: {usage: {output_tokens: 50, output_tokens_details: {thinking_tokens: 40}}}}
+---
+name: {{ (mode ~ ": " ~ "web searches and page openings are counted") | tojson }}
+mocks:
+- response:
+    json:
+      output: !replace
+      - {type: web_search_call, id: ws_1, status: completed, action: {type: search, query: a}}
+      - {type: web_search_call, id: ws_2, status: completed, action: {type: search, query: b}}
+      - {type: web_search_call, id: ws_3, status: completed, action: {type: open_page, url: 'https://a.com'}}
+      - {type: message, id: m1, role: assistant, status: completed, content: [{type: output_text, text: Hello, annotations: []}]}
+expect: {json: {usage: {server_tool_use: {web_search_requests: 2, web_fetch_requests: 1}}}}
+---
+name: {{ (mode ~ ": " ~ "usage without its details is an error") | tojson }}
+mocks: [{response: {json: {usage: !replace {input_tokens: 7, output_tokens: 3}}}}]
+expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: Internal server error}}}
+---
+name: {{ (mode ~ ": " ~ "usage with details that are no object is an error") | tojson }}
+mocks: [{response: {json: {usage: {input_tokens_details: many}}}}]
+expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: Internal server error}}}

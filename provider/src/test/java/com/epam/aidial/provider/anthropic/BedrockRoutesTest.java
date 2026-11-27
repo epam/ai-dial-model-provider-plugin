@@ -127,7 +127,7 @@ class BedrockRoutesTest {
         SessionTags tags = SessionTags.of(config, DialApi.from(fx.vertx(), config));
         return Routes.of(new AnthropicRoutes(
                 "/compat/bedrock",
-                Targets.bedrock(config, aws, tags),
+                AnthropicTargets.bedrock(config, aws, tags),
                 new UpstreamClient(fx.vertx(), config.proxies(), config.bedrock()),
                 new AzureAd((scope, aborted) -> Future.failedFuture("no Azure"), "s"),
                 aborted -> Future.failedFuture("no Google"),

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 import java.net.Socket;
@@ -42,7 +43,7 @@ class EmbeddedSmokeTest {
     }
 
     private static String deploy(Vertx vertx, int port) throws Exception {
-        HttpServerShim shim = new HttpServerShim(new CompatRouter(Map.of()));
+        HttpServerShim shim = new HttpServerShim(new CompatRouter(Map.of()), Requests.NO_CORE);
         return await(vertx.deployVerticle(
                 () -> new ModelProviderVerticle(shim, ModelProviderVerticle.serverOptions("127.0.0.1", port)),
                 new DeploymentOptions().setInstances(2)));

@@ -9,6 +9,7 @@ import ch.qos.logback.classic.Level;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.core.HttpServerShim;
 import com.epam.aidial.provider.core.ModelProviderVerticle;
+import com.epam.aidial.provider.testing.Requests;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -108,7 +109,7 @@ class MainTest {
     void shutdownWaitsForTheRequestsInFlight() throws Exception {
         Vertx vertx = Vertx.vertx();
         Promise<AdapterResponse> answer = Promise.promise();
-        HttpServerShim shim = new HttpServerShim(request -> answer.future());
+        HttpServerShim shim = new HttpServerShim(request -> answer.future(), Requests.NO_CORE);
         int port;
         try (ServerSocket socket = new ServerSocket(0)) {
             port = socket.getLocalPort();

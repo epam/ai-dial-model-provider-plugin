@@ -21,9 +21,11 @@ Every model of `Catalog`, through the API of the cloud, as DIAL Core would call 
 | ----- | --- | ------ | ---- |
 | AWS | Anthropic Messages | Claude | invoke-model (`legacy`) and `mantle` clients, the AWS profile |
 | AWS | OpenAI Responses | GPT | Bedrock Mantle, the AWS profile |
+| AWS | Anthropic Messages, translated | GPT | Bedrock Mantle, the AWS profile: the service translates the request to the Responses API |
 | GCP | Anthropic Messages | Claude | Vertex AI (global endpoint), Application Default Credentials |
 | Azure | Anthropic Messages | Claude | AI Foundry, by API key and by `DefaultAzureCredential` |
 | Azure | OpenAI Responses | GPT | Azure OpenAI, by API key and by `DefaultAzureCredential` |
+| Azure | Anthropic Messages, translated | GPT | Azure OpenAI, by API key and by `DefaultAzureCredential`: translated to the Responses API |
 
 Vertex AI has no Responses API in the service. On a developer machine `DefaultAzureCredential` falls back to the
 credentials of `az login`.

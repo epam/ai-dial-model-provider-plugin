@@ -2,8 +2,9 @@ package com.epam.aidial.provider.testing.http;
 
 import static com.epam.aidial.provider.testing.MockUpstream.await;
 
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.HttpServerShim;
+import com.epam.aidial.provider.testing.Requests;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -33,18 +34,18 @@ public final class CasesServer implements AutoCloseable {
     /** Builds the routes a case runs against; the clients it opens are handed to {@link CasesServer#own}. */
     @FunctionalInterface
     public interface Setup {
-        ModelProvider routes(JsonNode setup) throws Exception;
+        Handler routes(JsonNode setup) throws Exception;
     }
 
     private final Vertx vertx = Vertx.vertx();
     private final HttpServer server;
     private final List<HttpTestRunner> runners = new ArrayList<>();
     private final List<Supplier<Future<Void>>> resources = new ArrayList<>();
-    private volatile ModelProvider routes;
+    private volatile Handler routes;
 
     public CasesServer() throws Exception {
         server = await(vertx.createHttpServer()
-                .requestHandler(new HttpServerShim(request -> routes.handle(request)))
+                .requestHandler(new HttpServerShim(request -> routes.handle(request), Requests.NO_CORE))
                 .listen(0, "127.0.0.1"));
     }
 

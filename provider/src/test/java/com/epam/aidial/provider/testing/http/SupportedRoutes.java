@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -21,6 +22,13 @@ public final class SupportedRoutes {
      * last accepts every case.
      */
     public enum Runner {
+        /**
+         * {@code PluginCasesTest} (the plugin module): the cases of the suite {@code translate} that are of the mode
+         * {@code plugin}, the translator served as a plugin of DIAL Core.
+         */
+        PLUGIN(c -> SupportedRoutes.isTranslate(c) && SupportedRoutes.isPluginMode(c)),
+        /** {@code MessagesToResponsesCasesTest}: the suite {@code translate}, but for its mode {@code plugin}. */
+        TRANSLATE(c -> SupportedRoutes.isTranslate(c) && !SupportedRoutes.isPluginMode(c)),
         /** {@code OpenAiResponsesCasesTest}: the cases to a Responses route. */
         RESPONSES(SupportedRoutes::isResponses),
         /**
@@ -70,13 +78,31 @@ public final class SupportedRoutes {
         return suites;
     }
 
-    private static String suite(HttpTestCase c) {
+    private static boolean isTranslate(HttpTestCase c) {
+        return suiteOf(c).filter("translate"::equals).isPresent();
+    }
+
+    private static boolean isPluginMode(HttpTestCase c) {
+        Path file = c.file();
+        for (int i = file.getNameCount() - 3; i >= 0; i--) {
+            if (file.getName(i).toString().equals("translate")) {
+                return file.getName(i + 1).toString().equals("plugin");
+            }
+        }
+        return false;
+    }
+
+    static String suite(HttpTestCase c) {
+        return suiteOf(c).orElseThrow(() -> new IllegalStateException("not below http-tests: " + c.file()));
+    }
+
+    private static Optional<String> suiteOf(HttpTestCase c) {
         Path file = c.file();
         for (int i = file.getNameCount() - 2; i >= 0; i--) {
             if (file.getName(i).toString().equals("http-tests")) {
-                return file.getName(i + 1).toString();
+                return Optional.of(file.getName(i + 1).toString());
             }
         }
-        throw new IllegalStateException("not below http-tests: " + file);
+        return Optional.empty();
     }
 }

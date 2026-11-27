@@ -1,0 +1,54 @@
+---
+name: {{ (mode ~ ": " ~ "minimal") | tojson }}
+---
+name: {{ (mode ~ ": " ~ "max_tokens below 16 is sent as is") | tojson }}
+request: {json: {max_tokens: 4}}
+mocks: [{request: {json: {max_output_tokens: 4}}}]
+---
+name: {{ (mode ~ ": " ~ "max_tokens of 16 is sent as is") | tojson }}
+request: {json: {max_tokens: 16}}
+mocks: [{request: {json: {max_output_tokens: 16}}}]
+---
+name: {{ (mode ~ ": " ~ "max_tokens above 16 is sent as is") | tojson }}
+request: {json: {max_tokens: 4096}}
+mocks: [{request: {json: {max_output_tokens: 4096}}}]
+---
+name: {{ (mode ~ ": " ~ "max_tokens of 0 is sent as is") | tojson }}
+request: {json: {max_tokens: 0}}
+mocks: [{request: {json: {max_output_tokens: 0}}}]
+---
+name: {{ (mode ~ ": " ~ "stream false is sent as false") | tojson }}
+request: {json: {stream: false}}
+---
+name: {{ (mode ~ ": " ~ "temperature") | tojson }}
+request: {json: {temperature: 0.5}}
+mocks: [{request: {json: {temperature: 0.5}}}]
+---
+name: {{ (mode ~ ": " ~ "top_p") | tojson }}
+request: {json: {top_p: 0.9}}
+mocks: [{request: {json: {top_p: 0.9}}}]
+---
+name: {{ (mode ~ ": " ~ "metadata user_id becomes user") | tojson }}
+request: {json: {metadata: {user_id: u-1}}}
+mocks: [{request: {json: {user: u-1}}}]
+---
+name: {{ (mode ~ ": " ~ "metadata user_id of 64 characters stays") | tojson }}
+request: {json: {metadata: {user_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}}}
+mocks: [{request: {json: {user: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}}}]
+---
+name: {{ (mode ~ ": " ~ "metadata user_id of more than 64 characters is dropped, not truncated") | tojson }}
+request: {json: {metadata: {user_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}}}
+---
+name: {{ (mode ~ ": " ~ "service_tier auto") | tojson }}
+request: {json: {service_tier: auto}}
+mocks: [{request: {json: {service_tier: auto}}}]
+---
+name: {{ (mode ~ ": " ~ "service_tier standard_only becomes default") | tojson }}
+request: {json: {service_tier: standard_only}}
+mocks: [{request: {json: {service_tier: default}}}]
+---
+name: {{ (mode ~ ": " ~ "another service_tier is dropped") | tojson }}
+request: {json: {service_tier: priority}}
+---
+name: {{ (mode ~ ": " ~ "parameters with no Responses API counterpart are not sent") | tojson }}
+request: {json: {top_k: 5, stop_sequences: [END]}}

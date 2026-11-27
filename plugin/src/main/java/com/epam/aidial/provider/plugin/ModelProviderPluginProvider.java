@@ -38,24 +38,25 @@ public final class ModelProviderPluginProvider implements PluginProvider {
     }
 
     public ObjectNode settingsSchema() {
-        return Schemas.of(ModelProviderSettings.class, Variable.class);
+        return Schemas.modelProvider();
     }
 
-    /** The schema has accepted the settings: what is left is the variables' own checks. */
+    /** Checks what DIAL Core's schema check would, and the settings' own checks. */
     @Override
     public List<Problem> validate(ObjectNode node) {
         try {
-            Config.from(ModelProviderSettings.of(node).variables(environment));
+            Config.from(ModelProviderSettings.of(node, environment).settings());
             return List.of();
         } catch (ConfigException e) {
-            return List.of(new Problem(node.has(e.setting()) ? e.setting() : "", e.getMessage()));
+            boolean entry = ModelProviderSettings.ADAPTER.equals(e.setting()) || node.hasNonNull(e.setting());
+            return List.of(new Problem(entry ? e.setting() : "", e.getMessage()));
         }
     }
 
     @Override
     public Plugin create(ObjectNode node, Vertx vertx) {
-        ModelProviderSettings settings = ModelProviderSettings.of(node);
-        Config config = Config.from(settings.variables(environment));
+        ModelProviderSettings settings = ModelProviderSettings.of(node, environment);
+        Config config = Config.from(settings.settings());
         return new ModelProviderPlugin(
                 vertx, "/compat/" + settings.adapter().value(), ModelProviders.create(vertx, config));
     }

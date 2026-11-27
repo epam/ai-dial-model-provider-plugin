@@ -53,7 +53,7 @@ class ProviderSchemasTest {
     @Test
     void everyVariableIsDescribed() {
         JsonNode properties = modelProvider.get("properties");
-        assertEquals(33, properties.size());
+        assertEquals(39, properties.size());
         properties.forEach(property -> assertTrue(property.hasNonNull("description"), property.toString()));
     }
 
@@ -84,19 +84,48 @@ class ProviderSchemasTest {
     }
 
     @Test
-    void modelProviderVariablesAreTextNumbersBooleansObjectsOrNull() throws Exception {
-        String variables =
-                """
-                {"adapter": "bedrock", "HTTP_MAX_CONNECTIONS": 10, "HTTP_POOL_TIMEOUT": "10", "NO_PROXY": null,
-                 "AWS_SESSION_TAGS": {"team": "UserInfo.team"}, "http_proxy": "http://proxy", "SOMETHING_NEW": true}
-                """;
-        assertEquals(List.of(), errors(modelProvider, variables));
+    void everySettingHasOneTypeAndNoOtherSettingIsAccepted() throws Exception {
+        JsonNode schema = modelProvider;
+        assertEquals(false, schema.get("additionalProperties").asBoolean(true));
+        schema.get("properties")
+                .forEach(property -> assertTrue(property.get("type").isTextual(), property.toString()));
         assertEquals(
-                List.of("/HTTP_MAX_CONNECTIONS: array found, [string, number, boolean, object, null] expected"),
+                "integer",
+                schema.get("properties").get("HTTP_MAX_CONNECTIONS").get("type").asText());
+        assertEquals(
+                "string", schema.get("properties").get("DIAL_URL").get("type").asText());
+        JsonNode tags = schema.get("properties").get("AWS_SESSION_TAGS");
+        assertEquals("object", tags.get("type").asText());
+        assertEquals("string", tags.get("additionalProperties").get("type").asText());
+    }
+
+    @Test
+    void modelProviderSettingsHaveTheirTypes() throws Exception {
+        String settings =
+                """
+                {"adapter": "bedrock", "HTTP_MAX_CONNECTIONS": 10, "HTTP_POOL_TIMEOUT": 10, "NO_PROXY": "a,b",
+                 "AWS_SESSION_TAGS": {"team": "UserInfo.team"}, "http_proxy": "http://proxy"}
+                """;
+        assertEquals(List.of(), errors(modelProvider, settings));
+        assertEquals(
+                List.of("/HTTP_MAX_CONNECTIONS: string found, integer expected"),
+                errors(modelProvider, "{\"adapter\": \"openai\", \"HTTP_MAX_CONNECTIONS\": \"10\"}"));
+        assertEquals(
+                List.of("/HTTP_MAX_CONNECTIONS: array found, integer expected"),
                 errors(modelProvider, "{\"adapter\": \"openai\", \"HTTP_MAX_CONNECTIONS\": [1]}"));
         assertEquals(
-                List.of("/SOMETHING_NEW: array found, [string, number, boolean, object, null] expected"),
-                errors(modelProvider, "{\"adapter\": \"openai\", \"SOMETHING_NEW\": [1]}"));
+                List.of("/DIAL_URL: integer found, string expected"),
+                errors(modelProvider, "{\"adapter\": \"openai\", \"DIAL_URL\": 1}"));
+        assertEquals(
+                List.of("/AWS_SESSION_TAGS/team: integer found, string expected"),
+                errors(modelProvider, "{\"adapter\": \"bedrock\", \"AWS_SESSION_TAGS\": {\"team\": 1}}"));
+        assertEquals(
+                List.of("/AWS_SESSION_TAGS: string found, object expected"),
+                errors(modelProvider, "{\"adapter\": \"bedrock\", \"AWS_SESSION_TAGS\": \"{}\"}"));
+        assertEquals(
+                List.of(
+                        ": property 'SOMETHING_NEW' is not defined in the schema and the schema does not allow additional properties"),
+                errors(modelProvider, "{\"adapter\": \"openai\", \"SOMETHING_NEW\": \"x\"}"));
     }
 
     @Test

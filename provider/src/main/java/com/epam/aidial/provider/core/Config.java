@@ -1,7 +1,6 @@
 package com.epam.aidial.provider.core;
 
 import com.epam.aidial.provider.api.ConfigException;
-import com.epam.aidial.provider.json.Json;
 import com.epam.aidial.provider.upstream.Limits;
 import com.epam.aidial.provider.upstream.Limits.PoolWait;
 import com.epam.aidial.provider.upstream.Proxies;
@@ -21,73 +20,61 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Settings come from a map and never from the environment here, so an embedding process controls them. The checked
- * settings are parsed in a fixed order and the first one refused is reported.
+ * The typed {@link Settings}, with the defaults and the values derived from them. The process environment is read by
+ * {@link #from(Map)} and never here, so an embedding process controls what the settings are.
  */
 public final class Config {
 
     private static final Pattern RESPONSES_SUFFIX = Pattern.compile("/responses(?:/.*)?$");
     private static final Duration TEN_MINUTES = Duration.ofMinutes(10);
+    private static final String DEFAULT_PORT = "5000";
 
-    private final Map<String, String> settings;
+    private final Settings settings;
     private final int port;
     private final Limits openai;
     private final Limits vertexai;
     private final Limits bedrock;
-    private final int heartbeatSeconds;
     private final @Nullable Map<String, String> sessionTags;
     private final Set<String> vllmDeployments;
 
-    private Config(
-            Map<String, String> settings,
-            int port,
-            Limits openai,
-            Limits vertexai,
-            Limits bedrock,
-            int heartbeatSeconds,
-            @Nullable Map<String, String> sessionTags) {
+    private Config(Settings settings, int port) {
         this.settings = settings;
         this.port = port;
-        this.openai = openai;
-        this.vertexai = vertexai;
-        this.bedrock = bedrock;
-        this.heartbeatSeconds = heartbeatSeconds;
-        this.sessionTags = sessionTags;
-        this.vllmDeployments = Stream.concat(
-                        list(settings.get("VLLM_DEPLOYMENTS")), list(settings.get("QWEN3_ASR_VLLM_DEPLOYMENTS")))
-                .collect(Collectors.toUnmodifiableSet());
-    }
-
-    /**
-     * @throws ConfigException for the first checked setting that is refused
-     */
-    public static Config from(Map<String, String> settings) {
-        Map<String, String> s = Map.copyOf(settings);
-        int port = parsePort(s.getOrDefault("PORT", "5000"));
-        OptionalInt httpMax = optionalInt(s, "HTTP_MAX_CONNECTIONS");
-        OptionalInt httpPool = optionalInt(s, "HTTP_POOL_TIMEOUT");
-        int anthropicMax = optionalInt(s, "ANTHROPIC_MAX_CONNECTIONS").orElse(1000);
-        int anthropicPool = optionalInt(s, "ANTHROPIC_POOL_TIMEOUT").orElse(10);
-        int requestTimeout = optionalInt(s, "REQUEST_TIMEOUT_SECONDS").orElse(600);
-        int heartbeat = heartbeat(s.getOrDefault("SSE_HEARTBEAT_INTERVAL", "0"));
-        Map<String, String> tags =
-                stringDict("AWS_SESSION_TAGS", s.get("AWS_SESSION_TAGS"), "must be a JSON object of strings");
-
+        OptionalInt httpMax = optional(settings.httpMaxConnections());
+        int httpSeconds = orElse(settings.httpPoolTimeout(), 10);
+        int anthropicPool = orElse(settings.anthropicPoolTimeout(), 10);
+        int requestTimeout = orElse(settings.requestTimeoutSeconds(), 600);
         // A pool timeout of 0 or less waits without limit for the openai and vertexai mounts, and fails at once for
         // the bedrock mount.
-        int httpSeconds = httpPool.orElse(10);
         PoolWait httpWait =
                 httpSeconds > 0 ? new PoolWait.Bounded(Duration.ofSeconds(httpSeconds)) : new PoolWait.Unbounded();
         PoolWait anthropicWait =
                 anthropicPool > 0 ? new PoolWait.Bounded(Duration.ofSeconds(anthropicPool)) : new PoolWait.FailFast();
-        return new Config(
-                s,
-                port,
-                Limits.capped(httpMax.orElse(1000), httpWait, TEN_MINUTES),
-                Limits.capped(httpMax.orElse(250), httpWait, TEN_MINUTES),
-                Limits.capped(anthropicMax, anthropicWait, Duration.ofSeconds(Math.max(requestTimeout, 0))),
-                heartbeat,
-                tags == null || tags.isEmpty() ? null : tags);
+        this.openai = Limits.capped(httpMax.orElse(1000), httpWait, TEN_MINUTES);
+        this.vertexai = Limits.capped(httpMax.orElse(250), httpWait, TEN_MINUTES);
+        this.bedrock = Limits.capped(
+                orElse(settings.anthropicMaxConnections(), 1000),
+                anthropicWait,
+                Duration.ofSeconds(Math.max(requestTimeout, 0)));
+        Map<String, String> tags = settings.awsSessionTags();
+        this.sessionTags = tags == null || tags.isEmpty() ? null : tags;
+        this.vllmDeployments = Stream.concat(list(settings.vllmDeployments()), list(settings.qwen3AsrVllmDeployments()))
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    /**
+     * The settings of a process environment, and its {@code PORT}.
+     *
+     * @throws ConfigException for the first setting that is refused
+     */
+    public static Config from(Map<String, String> environment) {
+        int port = parsePort(environment.getOrDefault("PORT", DEFAULT_PORT));
+        return new Config(Settings.from(environment), port);
+    }
+
+    /** For the settings that are not a process's: the port is the default one, as there is no server to listen. */
+    public static Config from(Settings settings) {
+        return new Config(settings, Integer.parseInt(DEFAULT_PORT));
     }
 
     public int port() {
@@ -108,7 +95,7 @@ public final class Config {
 
     /** Whole seconds; 0 for none. */
     public int heartbeatSeconds() {
-        return heartbeatSeconds;
+        return orElse(settings.sseHeartbeatInterval(), 0);
     }
 
     /** Keeps the JSON object's order. */
@@ -117,91 +104,91 @@ public final class Config {
     }
 
     public Proxies proxies() {
-        return new Proxies(settings::get);
-    }
-
-    private String get(String name) {
-        return settings.get(name);
-    }
-
-    private String get(String name, String defaultValue) {
-        return settings.getOrDefault(name, defaultValue);
+        return new Proxies(name -> switch (name) {
+            case "HTTP_PROXY" -> settings.httpProxy();
+            case "http_proxy" -> settings.httpProxyLowerCase();
+            case "HTTPS_PROXY" -> settings.httpsProxy();
+            case "https_proxy" -> settings.httpsProxyLowerCase();
+            case "NO_PROXY" -> settings.noProxy();
+            case "no_proxy" -> settings.noProxyLowerCase();
+            default -> throw new IllegalArgumentException(name);
+        });
     }
 
     public String anthropicBaseUrl() {
-        return Urls.trimTrailingSlashes(get("ANTHROPIC_BASE_URL", "https://api.anthropic.com"));
+        return Urls.trimTrailingSlashes(orElse(settings.anthropicBaseUrl(), "https://api.anthropic.com"));
     }
 
     public String awsAccessKeyId() {
-        return get("AWS_ACCESS_KEY_ID", "");
+        return orElse(settings.awsAccessKeyId(), "");
     }
 
     public String awsSecretAccessKey() {
-        return get("AWS_SECRET_ACCESS_KEY", "");
+        return orElse(settings.awsSecretAccessKey(), "");
     }
 
     public String awsSessionToken() {
-        return get("AWS_SESSION_TOKEN", "");
+        return orElse(settings.awsSessionToken(), "");
     }
 
     public String awsAssumeRoleArn() {
-        return get("AWS_ASSUME_ROLE_ARN", "");
+        return orElse(settings.awsAssumeRoleArn(), "");
     }
 
     public String azureOpenAiScope() {
-        return get("AZURE_OPEN_AI_SCOPE", "https://cognitiveservices.azure.com/.default");
+        return orElse(settings.azureOpenAiScope(), "https://cognitiveservices.azure.com/.default");
     }
 
     public String dialUrl() {
-        String url = get("DIAL_URL");
+        String url = settings.dialUrl();
         return url == null || url.endsWith("/") ? url : url + "/";
     }
 
     public String anthropicVertexBaseUrl() {
-        return Urls.trimTrailingSlashes(get("ANTHROPIC_VERTEX_BASE_URL", ""));
+        return Urls.trimTrailingSlashes(orElse(settings.anthropicVertexBaseUrl(), ""));
     }
 
     /** DEFAULT_REGION is the deprecated fallback; an empty value counts as unset. */
     public String gcpDefaultRegion() {
-        String region = get("GCP_DEFAULT_REGION", "");
-        return region.isEmpty() ? get("DEFAULT_REGION", "") : region;
+        String region = orElse(settings.gcpDefaultRegion(), "");
+        return region.isEmpty() ? orElse(settings.defaultRegion(), "") : region;
     }
 
     public String gcpProjectId() {
-        return get("GCP_PROJECT_ID", "");
+        return orElse(settings.gcpProjectId(), "");
     }
 
     /** Null when unset; an empty value is returned as is, unlike in {@link #awsRegion}. */
     public String awsDefaultRegion() {
-        return get("AWS_DEFAULT_REGION");
+        return settings.awsDefaultRegion();
     }
 
     public String awsRegion() {
-        String region = get("AWS_REGION", "");
+        String region = orElse(settings.awsRegion(), "");
         if (region.isEmpty()) {
-            region = get("AWS_DEFAULT_REGION", "");
+            region = orElse(settings.awsDefaultRegion(), "");
         }
         return region.isEmpty() ? "us-east-1" : region;
     }
 
     public String awsClaudeDefaultClient() {
-        return get("AWS_CLAUDE_DEFAULT_CLIENT", "legacy");
+        return orElse(settings.awsClaudeDefaultClient(), "legacy");
     }
 
     public String anthropicBedrockBaseUrl() {
-        return Urls.trimTrailingSlashes(get("ANTHROPIC_BEDROCK_BASE_URL", ""));
+        return Urls.trimTrailingSlashes(orElse(settings.anthropicBedrockBaseUrl(), ""));
     }
 
     public String anthropicBedrockMantleBaseUrl() {
-        return Urls.trimTrailingSlashes(get("ANTHROPIC_BEDROCK_MANTLE_BASE_URL", ""));
+        return Urls.trimTrailingSlashes(orElse(settings.anthropicBedrockMantleBaseUrl(), ""));
     }
 
     public String awsBedrockBaseUrl() {
-        return bedrockBaseUrl(get("AWS_BEDROCK_BASE_URL", ""));
+        return bedrockBaseUrl(orElse(settings.awsBedrockBaseUrl(), ""));
     }
 
     public String awsBearerTokenBedrock() {
-        return get("AWS_BEARER_TOKEN_BEDROCK", "");
+        return orElse(settings.awsBearerTokenBedrock(), "");
     }
 
     public Set<String> vllmDeployments() {
@@ -209,19 +196,19 @@ public final class Config {
     }
 
     public String awsProfile() {
-        return Strings.emptyToNull(get("AWS_PROFILE"));
+        return Strings.emptyToNull(settings.awsProfile());
     }
 
     public String awsStsEndpointUrl() {
-        return Strings.emptyToNull(get("AWS_ENDPOINT_URL_STS", get("AWS_ENDPOINT_URL")));
+        return Strings.emptyToNull(orElse(settings.awsEndpointUrlSts(), settings.awsEndpointUrl()));
     }
 
     public String googleApplicationCredentials() {
-        return Strings.emptyToNull(get("GOOGLE_APPLICATION_CREDENTIALS"));
+        return Strings.emptyToNull(settings.googleApplicationCredentials());
     }
 
     public String googleCloudQuotaProject() {
-        return Strings.emptyToNull(get("GOOGLE_CLOUD_QUOTA_PROJECT"));
+        return Strings.emptyToNull(settings.googleCloudQuotaProject());
     }
 
     private static String bedrockBaseUrl(String value) {
@@ -273,40 +260,15 @@ public final class Config {
         return port;
     }
 
-    private static OptionalInt optionalInt(Map<String, String> s, String name) {
-        String value = s.get(name);
-        if (value == null) {
-            return OptionalInt.empty();
-        }
-        try {
-            return OptionalInt.of(Integer.parseInt(value));
-        } catch (NumberFormatException e) {
-            throw new ConfigException(name, name + " must be an integer", e);
-        }
+    private static OptionalInt optional(@Nullable Integer value) {
+        return value == null ? OptionalInt.empty() : OptionalInt.of(value);
     }
 
-    private static int heartbeat(String value) {
-        String message = "SSE_HEARTBEAT_INTERVAL must be a non-negative integer";
-        int seconds;
-        try {
-            seconds = Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            throw new ConfigException("SSE_HEARTBEAT_INTERVAL", message, e);
-        }
-        if (seconds < 0) {
-            throw new ConfigException("SSE_HEARTBEAT_INTERVAL", message);
-        }
-        return seconds;
+    private static int orElse(@Nullable Integer value, int defaultValue) {
+        return value == null ? defaultValue : value;
     }
 
-    private static Map<String, String> stringDict(String name, String value, String mustBe) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return Json.parseStringMap(value);
-        } catch (Json.ParseException e) {
-            throw new ConfigException(name, name + " " + mustBe, e);
-        }
+    private static String orElse(@Nullable String value, String defaultValue) {
+        return value == null ? defaultValue : value;
     }
 }

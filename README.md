@@ -93,7 +93,7 @@ One entry per adapter you use:
   "plugins": {
     "model-provider-bedrock": {
       "type": "model-provider",
-      "settings": { "adapter": "bedrock", "HTTP_MAX_CONNECTIONS": "2000" }
+      "settings": { "adapter": "bedrock", "HTTP_MAX_CONNECTIONS": 2000 }
     },
     "model-provider-openai": {
       "type": "model-provider",
@@ -107,8 +107,9 @@ One entry per adapter you use:
   (see [Upstreams](#upstreams)).
 - A translator is an entry of its own type, `translator`, with its own settings: see
   [Messages API for a Responses model](#messages-api-for-a-responses-model).
-- Other settings are the [variables](#settings), by name. Values can be strings, numbers, booleans or, for
-  `AWS_SESSION_TAGS`, an object. `null` unsets a variable.
+- Other settings are the [variables](#settings) the plugin reads, by name, and no other name is accepted. A variable
+  has one type: an integer for the connection, timeout and heartbeat settings, an object of strings for
+  `AWS_SESSION_TAGS`, a string for the rest. `null` is the same as leaving the variable out.
 - Variables not set here come from DIAL Core's environment. **Keep credentials there**: DIAL Core returns settings
   as written through its API.
 - Settings apply from the next request, no restart. A new jar needs a restart.

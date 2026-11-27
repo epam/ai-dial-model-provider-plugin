@@ -95,12 +95,12 @@ class ModelProviderPluginTest {
                 "not a setting of the entry");
         assertEquals(
                 List.of(),
-                badEnvironment.validate(settings("adapter", "openai", "HTTP_MAX_CONNECTIONS", "10")),
+                badEnvironment.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", 10)),
                 "the entry wins");
         assertEquals(
-                List.of(),
+                badEnvironment.validate(settings("adapter", "openai")),
                 badEnvironment.validate(settings("adapter", "openai").putNull("HTTP_MAX_CONNECTIONS")),
-                "null unsets it");
+                "null is the same as absent");
         assertEquals(
                 List.of(),
                 new ModelProviderPluginProvider(Map.of())
@@ -113,21 +113,21 @@ class ModelProviderPluginTest {
     }
 
     @Test
-    void anEntrysValuesAreTheTextTheEnvironmentWouldHold() {
+    void anEntrysSettingsHaveTheTypeOfTheSetting() {
         ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
         ObjectNode object = settings("adapter", "bedrock");
         object.putObject("AWS_SESSION_TAGS").put("team", "a");
-        assertEquals(List.of(), provider.validate(object), "an object is its JSON");
+        assertEquals(List.of(), provider.validate(object), "the session tags are an object");
 
         assertEquals(
                 new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"),
                 single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", 1.5))),
-                "a number is its text");
+                "an integer is not a fraction");
         assertEquals(
                 "HTTP_MAX_CONNECTIONS",
                 single(provider.validate(settings("adapter", "openai").put("HTTP_MAX_CONNECTIONS", true)))
                         .path(),
-                "a boolean is its text");
+                "an integer is not a boolean");
     }
 
     @Test

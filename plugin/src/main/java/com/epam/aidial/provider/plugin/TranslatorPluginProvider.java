@@ -24,7 +24,7 @@ public final class TranslatorPluginProvider implements PluginProvider {
     }
 
     public ObjectNode settingsSchema() {
-        return Schemas.of(TranslatorSettings.class, Void.class);
+        return Schemas.of(TranslatorSettings.class);
     }
 
     /** The schema checks the settings, and the translator reads none. */

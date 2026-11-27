@@ -24,11 +24,11 @@ class LayeringTest {
 
     private static final String ALLOWED =
             """
-            (root) -> anthropic, core, credentials, openai, translation, upstream
+            (root) -> anthropic, api, core, credentials, openai, translation, upstream
             anthropic -> api, core, credentials, json, upstream
             core -> api, json, upstream
             json -> api
-            credentials -> core, json, upstream
+            credentials -> api, core, json, upstream
             openai -> api, core, credentials, json, upstream
             translation -> anthropic, api, core, json, upstream
             upstream -> api

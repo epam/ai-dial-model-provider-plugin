@@ -11,6 +11,7 @@ import com.epam.aidial.provider.api.CacheHeaders.MessagesCacheHeaders;
 import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.epam.aidial.provider.core.Answers;
+import com.epam.aidial.provider.core.Bodies;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.json.Json;
 import com.epam.aidial.provider.upstream.AdapterErrors;

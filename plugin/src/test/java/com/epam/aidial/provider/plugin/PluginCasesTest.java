@@ -26,7 +26,6 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
-import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.streams.ReadStream;
 import java.io.IOException;
@@ -127,12 +126,13 @@ class PluginCasesTest {
                 headers.set("Api-Key", key);
             }
             RequestOptions options = new RequestOptions()
-                    .setMethod(HttpMethod.POST)
+                    .setMethod(call.method())
                     .setAbsoluteURI(coreUrl + call.uri())
                     .setHeaders(headers);
-            return client.request(options)
-                    .compose(outgoing -> outgoing.send(Buffer.buffer(call.body().toString()))
-                            .map(incoming -> answer(outgoing, incoming)));
+            return client.request(options).compose(outgoing -> (call.body() == null
+                            ? outgoing.send()
+                            : outgoing.send(Buffer.buffer(call.body().toString())))
+                    .map(incoming -> answer(outgoing, incoming)));
         }
 
         private static Response answer(HttpClientRequest outgoing, HttpClientResponse incoming) {

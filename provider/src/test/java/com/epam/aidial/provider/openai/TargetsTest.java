@@ -91,7 +91,8 @@ class TargetsTest {
 
     private static Resolved resolve(Upstream upstream, AdapterRequest request) throws Exception {
         Target t = upstream.resolver().resolve(request);
-        Authorizer authorizer = await(upstream.auth().forRequest(t, request.headers(), null, request.aborted()));
+        Authorizer authorizer =
+                await(upstream.auth().forRequest(t, request.headers(), request.core(), null, request.aborted()));
         MultiMap headers = OpenAiHeaders.toUpstream(t, Endpoint.CREATE);
         await(authorizer.authorize(HttpMethod.POST, t.baseUrl(), headers, null));
         return new Resolved(t, headers);

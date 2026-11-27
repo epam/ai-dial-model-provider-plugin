@@ -1,5 +1,6 @@
 package com.epam.aidial.provider.anthropic;
 
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.credentials.Authorizer;
 import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
@@ -20,9 +21,10 @@ final class UpstreamAuth {
         this.clock = clock;
     }
 
-    Future<Authorizer> forRequest(Target target, MultiMap clientHeaders, String model, Future<Void> aborted) {
+    Future<Authorizer> forRequest(
+            Target target, MultiMap clientHeaders, Handler core, String model, Future<Void> aborted) {
         return switch (target) {
-            case Target.Bedrock aws -> signature(aws, clientHeaders, model, aborted);
+            case Target.Bedrock aws -> signature(aws, clientHeaders, core, model, aborted);
             // Fetched now, not at authorize time: a failure answers the request.
             case Target.Foundry foundry ->
                 foundry.key() == null
@@ -38,12 +40,12 @@ final class UpstreamAuth {
     }
 
     private Future<Authorizer> signature(
-            Target.Bedrock aws, MultiMap clientHeaders, String model, Future<Void> aborted) {
+            Target.Bedrock aws, MultiMap clientHeaders, Handler core, String model, Future<Void> aborted) {
         Future<AwsCredentials.Provider> credentials =
                 switch (aws.credentials()) {
                     case BedrockCredentials.Fixed fixed -> Future.succeededFuture(fixed.provider());
                     case BedrockCredentials.TaggedPerRequest tagged ->
-                        tagged.role().provider(clientHeaders, model, aborted);
+                        tagged.role().provider(clientHeaders, core, model, aborted);
                 };
         return credentials.map(
                 provider -> Authorizer.sigV4(provider, aws.signingRegion(), aws.service(), aborted, clock));

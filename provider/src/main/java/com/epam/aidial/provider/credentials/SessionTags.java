@@ -1,5 +1,6 @@
 package com.epam.aidial.provider.credentials;
 
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
 import com.epam.aidial.provider.json.Json;
@@ -40,12 +41,12 @@ public final class SessionTags {
     // A sign and digits; ASCII digits only: an index such as "1_0" is not an integer here (README "Checks").
     private static final Pattern ARRAY_INDEX = Pattern.compile("[+-]?[0-9]+");
 
-    private final @Nullable DialApi dial;
+    private final DialApi dial;
     private final List<String> modelKeys = new ArrayList<>();
     private final List<UserInfoTag> userInfoTags = new ArrayList<>();
 
     /** An entry of an unknown source is warned of here, once, not per request. */
-    SessionTags(Map<String, String> entries, @Nullable DialApi dial) {
+    SessionTags(Map<String, String> entries, DialApi dial) {
         this.dial = dial;
         entries.forEach((key, source) -> {
             if (source.equals(MODEL_SOURCE)) {
@@ -62,8 +63,14 @@ public final class SessionTags {
     }
 
     /** Null when AWS_SESSION_TAGS tags nothing. */
-    public static @Nullable SessionTags of(Config config, @Nullable DialApi dial) {
+    public static @Nullable SessionTags of(Config config, DialApi dial) {
         return config.sessionTags() == null ? null : new SessionTags(config.sessionTags(), dial);
+    }
+
+    /** Whether a tag takes its value from the DIAL user info. */
+    public static boolean usesUserInfo(Config config) {
+        return config.sessionTags() != null
+                && config.sessionTags().values().stream().anyMatch(source -> source.startsWith(USER_INFO_PREFIX));
     }
 
     record Tagged(String key, String source, String value) {}
@@ -78,11 +85,15 @@ public final class SessionTags {
     /**
      * model is null when the request has none (a route without a body, or a body whose model is no string). Fails with
      * a {@link CredentialsUnavailableException}, or ClientGoneException when the client goes.
+     *
+     * @param core the {@link com.epam.aidial.provider.api.AdapterRequest#core() core} of the request: the user info
+     *     is fetched through it
      */
-    public Future<AwsCredentials.Session> resolve(MultiMap headers, @Nullable String model, Future<Void> aborted) {
+    public Future<AwsCredentials.Session> resolve(
+            MultiMap headers, Handler core, @Nullable String model, Future<Void> aborted) {
         String modelValue = modelValue(model);
         Future<Map<String, Object>> info =
-                userInfoTags.isEmpty() ? Future.succeededFuture() : userInfo(headers, aborted);
+                userInfoTags.isEmpty() ? Future.succeededFuture() : userInfo(headers, core, aborted);
         return info.map(user -> fit(tagged(modelValue, user)))
                 .recover(e -> Future.failedFuture(
                         e instanceof ClientGoneException
@@ -101,24 +112,20 @@ public final class SessionTags {
     }
 
     /**
-     * A transport failure is retried, a status is not. Null when not fetched: no api-key, no DIAL_URL, or a failure
-     * (logged); an empty api-key fails the request.
+     * A transport failure is retried, a status is not. Null when not fetched: no api-key, or a failure (logged); an
+     * empty api-key fails the request.
      */
-    private Future<Map<String, Object>> userInfo(MultiMap headers, Future<Void> aborted) {
+    private Future<Map<String, Object>> userInfo(MultiMap headers, Handler core, Future<Void> aborted) {
         String key = headers.get("Api-Key");
         if (key == null) {
             log.warn("Skipping UserInfo AWS STS session tags; the request carries no DIAL API key");
-            return Future.succeededFuture();
-        }
-        if (dial == null) {
-            log.warn("Skipping UserInfo AWS STS session tags; DIAL_URL env variable is not set");
             return Future.succeededFuture();
         }
         if (key.isEmpty()) {
             // the DIAL client refuses an empty key
             return Future.failedFuture(new IllegalStateException("empty api-key header"));
         }
-        return dial.get(dial.userInfoUrl(), key, DialApi.Retry.TRANSPORT, aborted)
+        return dial.get(core, DialApi.USER_INFO, key, DialApi.Retry.TRANSPORT, aborted)
                 .map(body -> parseUserInfo(body.getBytes()))
                 .recover(ClientGoneException.unlessGone(aborted, e -> {
                     log.atWarn()

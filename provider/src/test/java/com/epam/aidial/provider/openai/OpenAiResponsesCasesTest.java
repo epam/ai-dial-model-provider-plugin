@@ -66,7 +66,7 @@ class OpenAiResponsesCasesTest {
         Config config = Config.from(CasesServer.env(setup));
         UpstreamClient client =
                 server.own(new UpstreamClient(vertx, config.proxies(), config.openai()), UpstreamClient::close);
-        DialApi dial = server.own(DialApi.from(vertx, config), DialApi::close);
+        DialApi dial = new DialApi(vertx);
         AzureTokenSource azure = (scope, aborted) -> token != null
                 ? Future.succeededFuture(token)
                 : Future.failedFuture(new AzureTokens.AzureAdException(new IllegalStateException(tokenError)));

@@ -114,7 +114,8 @@ public final class AnthropicRoutes implements Routes.Group {
         String url = target.url(endpoint, body.model(), delivery.streams());
         // Not the request: it holds the body, which the callbacks below must not keep alive (see Unsent).
         Future<Void> aborted = request.aborted();
-        Future<Authorizer> authorizer = auth.forRequest(target, request.headers(), body.model(), aborted);
+        Future<Authorizer> authorizer =
+                auth.forRequest(target, request.headers(), request.core(), body.model(), aborted);
 
         MultiMap headers = AnthropicHeaders.toUpstream(request.headers(), target);
         BodyFields fields = body.fields();

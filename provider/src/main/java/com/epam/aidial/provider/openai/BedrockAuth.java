@@ -1,5 +1,6 @@
 package com.epam.aidial.provider.openai;
 
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.credentials.Authorizer;
 import com.epam.aidial.provider.credentials.AwsCredentialSettings;
@@ -50,14 +51,14 @@ final class BedrockAuth {
     }
 
     Future<Authorizer> credentials(
-            Target t, Key key, @Nullable String model, MultiMap clientHeaders, Future<Void> aborted) {
+            Target t, Key key, @Nullable String model, MultiMap clientHeaders, Handler core, Future<Void> aborted) {
         if (key == Key.EMPTY && t.mantle()) {
             return refused(aborted, "The `api_key` argument must not be empty.");
         }
         AwsCredentials.CredentialSet c = key == Key.EMPTY
                 ? NO_CREDENTIALS
                 : settings.overlay(t.extra().aws()).credentialSet();
-        return bedrockKeys(t, c, model, clientHeaders, aborted);
+        return bedrockKeys(t, c, model, clientHeaders, core, aborted);
     }
 
     private Future<Authorizer> bedrockKeys(
@@ -65,6 +66,7 @@ final class BedrockAuth {
             AwsCredentials.CredentialSet c,
             @Nullable String model,
             MultiMap clientHeaders,
+            Handler core,
             Future<Void> aborted) {
         Future<SigV4.Credentials> keys = Future.succeededFuture(
                 c.keyId().isEmpty()
@@ -74,7 +76,7 @@ final class BedrockAuth {
         if (!c.roleArn().isEmpty()) {
             Future<AwsCredentials.Session> session = sessionTags == null
                     ? Future.succeededFuture(AwsCredentials.Session.NONE)
-                    : sessionTags.resolve(clientHeaders, model, aborted);
+                    : sessionTags.resolve(clientHeaders, core, model, aborted);
             // Passed on as keys: one STS call at most per request.
             keys = aws.taggedProvider(c, t.bedrock().region(), "", session, AwsCredentials.OPENAI_ROLE_WINDOW)
                     .compose(provider -> provider.credentials(aborted));

@@ -18,6 +18,17 @@ public final class Requests {
 
     public static AdapterRequest of(
             HttpMethod method, String path, String query, MultiMap headers, Buffer body, Future<Void> aborted) {
-        return new AdapterRequest(method, path, query, headers, body, aborted, NO_CORE);
+        return of(method, path, query, headers, body, aborted, NO_CORE);
+    }
+
+    public static AdapterRequest of(
+            HttpMethod method,
+            String path,
+            String query,
+            MultiMap headers,
+            Buffer body,
+            Future<Void> aborted,
+            Handler core) {
+        return new AdapterRequest(method, path, query, headers, body, aborted, core);
     }
 }

@@ -391,7 +391,7 @@ class ModelProviderPluginTest {
     @Test
     void serviceLoaderFindsTheIds() {
         List<String> ids = ServiceLoader.load(PluginProvider.class).stream()
-                .map(p -> p.get().id())
+                .map(p -> p.get().type())
                 .toList();
         assertEquals(List.of("model-provider", "translator"), ids);
     }

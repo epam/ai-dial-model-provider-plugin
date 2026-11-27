@@ -2,7 +2,6 @@ package com.epam.aidial.provider.plugin;
 
 import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.PluginProvider;
-import com.epam.aidial.core.plugin.PluginTarget;
 import com.epam.aidial.provider.ModelProviders;
 import com.epam.aidial.provider.api.ConfigException;
 import com.epam.aidial.provider.core.Config;
@@ -10,7 +9,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The adapters of {@link Adapter}, each below {@code /compat/<adapter>}. A variable an entry's settings
@@ -30,22 +28,15 @@ public final class ModelProviderPluginProvider implements PluginProvider {
     }
 
     @Override
-    public String id() {
+    public String type() {
         return "model-provider";
     }
 
-    @Override
     public String description() {
         return "Forwards model requests to the LLM APIs of the clouds: Azure OpenAI and OpenAI, Anthropic on Vertex AI"
                 + " and on Amazon Bedrock.";
     }
 
-    @Override
-    public Set<PluginTarget> targets() {
-        return Set.of(PluginTarget.MODEL);
-    }
-
-    @Override
     public ObjectNode settingsSchema() {
         return Schemas.of(ModelProviderSettings.class, Variable.class);
     }

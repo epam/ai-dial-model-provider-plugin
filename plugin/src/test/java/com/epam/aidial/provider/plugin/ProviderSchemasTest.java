@@ -4,8 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.epam.aidial.core.plugin.PluginProvider;
-import com.epam.aidial.core.plugin.PluginTarget;
 import com.epam.aidial.provider.ModelProviders;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -23,12 +21,14 @@ class ProviderSchemasTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final PluginProvider modelProvider = new ModelProviderPluginProvider();
-    private final PluginProvider translator = new TranslatorPluginProvider();
+    private final ModelProviderPluginProvider modelProviderPlugin = new ModelProviderPluginProvider();
+    private final TranslatorPluginProvider translatorPlugin = new TranslatorPluginProvider();
+    private final ObjectNode modelProvider = modelProviderPlugin.settingsSchema();
+    private final ObjectNode translator = translatorPlugin.settingsSchema();
 
-    private static List<String> errors(PluginProvider provider, String settings) throws Exception {
+    private static List<String> errors(ObjectNode settingsSchema, String settings) throws Exception {
         Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_7)
-                .getSchema(MAPPER.writeValueAsString(provider.settingsSchema()));
+                .getSchema(MAPPER.writeValueAsString(settingsSchema));
         return schema.validate(MAPPER.readTree(settings)).stream()
                 .map(error -> error.getInstanceLocation() + ": " + error.getMessage())
                 .toList();
@@ -36,33 +36,30 @@ class ProviderSchemasTest {
 
     @Test
     void providersDescribeThemselves() {
-        assertEquals("model-provider", modelProvider.id());
-        assertEquals(Set.of(PluginTarget.MODEL), modelProvider.targets());
-        assertEquals("translator", translator.id());
-        assertEquals(Set.of(PluginTarget.TRANSLATOR), translator.targets());
+        assertEquals("model-provider", modelProviderPlugin.type());
+        assertEquals("translator", translatorPlugin.type());
     }
 
     @Test
     void schemasAreSelfContainedDraft07() {
-        for (PluginProvider provider : List.of(modelProvider, translator)) {
-            ObjectNode schema = provider.settingsSchema();
+        for (ObjectNode schema : List.of(modelProvider, translator)) {
             assertEquals(
                     "http://json-schema.org/draft-07/schema#",
                     schema.get("$schema").asText());
-            assertFalse(schema.toString().contains("$ref"), provider.id());
+            assertFalse(schema.toString().contains("$ref"));
         }
     }
 
     @Test
     void everyVariableIsDescribed() {
-        JsonNode properties = modelProvider.settingsSchema().get("properties");
+        JsonNode properties = modelProvider.get("properties");
         assertEquals(33, properties.size());
         properties.forEach(property -> assertTrue(property.hasNonNull("description"), property.toString()));
     }
 
     @Test
     void adaptersAreTheOnesThereAre() {
-        JsonNode adapter = modelProvider.settingsSchema().get("properties").get("adapter");
+        JsonNode adapter = modelProvider.get("properties").get("adapter");
         assertEquals(
                 ModelProviders.ADAPTERS, MAPPER.convertValue(adapter.get("enum"), new TypeReference<Set<String>>() {}));
     }

@@ -115,10 +115,9 @@ class PluginJarIsolationTest {
                 .toList();
         assertEquals(
                 List.of("model-provider", "translator"),
-                found.stream().map(PluginProvider::id).toList());
+                found.stream().map(PluginProvider::type).toList());
         for (PluginProvider each : found) {
             assertEquals(isolated, each.getClass().getClassLoader(), "from the jar");
-            assertEquals("object", each.settingsSchema().get("type").asText(), each.id());
         }
         PluginProvider provider = found.getFirst();
 

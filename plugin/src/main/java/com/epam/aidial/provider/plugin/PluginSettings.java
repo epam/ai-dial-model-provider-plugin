@@ -8,30 +8,39 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
- * A plugin entry's settings as Jackson binds them: the keys the plugin reads itself, typed, and every other key as a
- * variable of the service's own configuration ({@link #variables}).
+ * A model-provider entry's settings as Jackson binds them: the key the plugin reads itself ({@code adapter}), and every
+ * other key as a variable of the service's own configuration ({@link #variables}).
  */
 final class PluginSettings {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private String adapter = "";
+    private @Nullable JsonNode adapter;
     private final Map<String, JsonNode> others = new LinkedHashMap<>();
 
     static PluginSettings of(ObjectNode settings) {
         return MAPPER.convertValue(settings, PluginSettings.class);
     }
 
+    boolean hasAdapter() {
+        return adapter != null && !adapter.isNull();
+    }
+
     /** The name of the adapter the entry serves; empty if the setting is missing or is not text. */
     String adapter() {
-        return adapter;
+        return text(adapter);
     }
 
     @JsonSetter("adapter")
     void adapter(JsonNode value) {
-        adapter = value.isTextual() ? value.textValue() : "";
+        adapter = value;
+    }
+
+    private static String text(@Nullable JsonNode value) {
+        return value != null && value.isTextual() ? value.textValue() : "";
     }
 
     @JsonAnySetter

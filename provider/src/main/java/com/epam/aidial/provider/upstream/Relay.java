@@ -3,6 +3,7 @@ package com.epam.aidial.provider.upstream;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
 import com.epam.aidial.provider.api.CacheBreakpoint;
+import com.epam.aidial.provider.api.CacheHeaders;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import java.time.Clock;
@@ -63,6 +64,7 @@ public final class Relay {
         if (breakpoint == null || answer.status() != 200) {
             return answer;
         }
-        return answer.setCacheBreakpoint(breakpoint, clock.instant());
+        CacheHeaders.stamp(answer.headers(), breakpoint, clock.instant());
+        return answer;
     }
 }

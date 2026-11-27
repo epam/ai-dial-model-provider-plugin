@@ -10,9 +10,10 @@ import java.util.Map;
  * and its credentials. The suites and the smoke report both read it, so a model added here is tested and reported.
  *
  * <p>Claude is reached on Bedrock with both clients (invoke-model, {@code legacy}, and {@code mantle}), on Vertex AI,
- * and on Azure AI Foundry; GPT through the Responses API on Bedrock Mantle and Azure OpenAI. Azure goes twice, by API
- * key and by {@code DefaultAzureCredential}, which on a developer machine falls back to {@code az login}. Vertex AI
- * has no Responses API here.
+ * and on Azure AI Foundry; GPT through the Responses API on Bedrock Mantle and Azure OpenAI, and through the Messages
+ * API too, which the service translates to the Responses API of the same upstream. Azure goes twice, by API key and by
+ * {@code DefaultAzureCredential}, which on a developer machine falls back to {@code az login}. Vertex AI has no
+ * Responses API here.
  */
 final class Catalog {
 
@@ -52,8 +53,11 @@ final class Catalog {
         BEDROCK_MANTLE_CLAUDE.forEach(model -> out.add(claudeOnBedrock("mantle", region, model)));
         // No key and no extra data: the AWS profile of the settings signs the call.
         String mantle = "https://bedrock-mantle.%s.api.aws/v1/responses".formatted(region);
-        BEDROCK_MANTLE_GPT.forEach(
-                model -> out.add(responses(Cloud.AWS, "mantle", model, Map.of("X-Upstream-Endpoint", mantle))));
+        Map<String, String> mantleHeaders = Map.of("X-Upstream-Endpoint", mantle);
+        BEDROCK_MANTLE_GPT.forEach(model -> {
+            out.add(responses(Cloud.AWS, "mantle", model, mantleHeaders));
+            out.add(messagesOverResponses(Cloud.AWS, "mantle", model, mantleHeaders));
+        });
         return out;
     }
 
@@ -85,6 +89,7 @@ final class Catalog {
             for (String model : AZURE_GPT) {
                 Map<String, String> headers = azureHeaders(azure.resource() + "/openai/v1/responses", auth);
                 out.add(responses(Cloud.AZURE, auth.getKey(), model, headers));
+                out.add(messagesOverResponses(Cloud.AZURE, auth.getKey(), model, headers));
             }
         }
         return out;
@@ -102,6 +107,17 @@ final class Catalog {
     /** The Messages API of a mount (openai, vertexai or bedrock). */
     private static Deployment messages(Cloud cloud, String via, String mount, String model, Map<String, String> h) {
         return new Deployment(cloud, Api.MESSAGES, via, model, "/compat/" + mount + "/anthropic/v1/messages", h);
+    }
+
+    /**
+     * The Messages API of a model that has the Responses API only: the openai mount translates it when the endpoint
+     * is a Responses one. The translation names the deployment in the answer, as DIAL Core tells it to in {@code
+     * X-DIAL-DEPLOYMENT-ID}.
+     */
+    private static Deployment messagesOverResponses(Cloud cloud, String via, String model, Map<String, String> h) {
+        Map<String, String> headers = new LinkedHashMap<>(h);
+        headers.put("X-DIAL-DEPLOYMENT-ID", model);
+        return messages(cloud, via + " (translated)", "openai", model, headers);
     }
 
     private static Deployment responses(Cloud cloud, String via, String model, Map<String, String> headers) {

@@ -1,0 +1,15 @@
+---
+name: {{ (mode ~ ": " ~ "answer that is not JSON") | tojson }}
+mocks: [{response: {headers: {Content-Type: text/plain}, body: '<html>', json: !delete }}]
+---
+name: {{ (mode ~ ": " ~ "answer without output") | tojson }}
+mocks: [{response: {json: {output: !delete }}}]
+---
+name: {{ (mode ~ ": " ~ "usage tokens that are no number") | tojson }}
+mocks: [{response: {json: {usage: {input_tokens: many}}}}]
+---
+name: {{ (mode ~ ": " ~ "output that is no array") | tojson }}
+mocks: [{response: {json: {output: 5}}}]
+---
+name: {{ (mode ~ ": " ~ "answer that is not an object") | tojson }}
+mocks: [{response: {json: !replace []}}]

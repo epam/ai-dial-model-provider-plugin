@@ -13,6 +13,7 @@ import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.credentials.Authorizer;
 import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -48,7 +49,7 @@ class TargetsTest {
         vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
     }
 
-    private record Upstream(Targets.Resolver resolver, UpstreamAuth auth) {}
+    private record Upstream(OpenAiTargets.Resolver resolver, UpstreamAuth auth) {}
 
     private Upstream upstream(String... settings) {
         Map<String, String> s = new HashMap<>();
@@ -59,7 +60,7 @@ class TargetsTest {
         AwsCredentials aws = new AwsCredentials(
                 vertx, config, () -> StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIDCHAIN", "s")));
         return new Upstream(
-                Targets.openai(config),
+                OpenAiTargets.openai(config),
                 new UpstreamAuth(
                         config,
                         new AzureAd((scope, aborted) -> Future.succeededFuture("aad"), "scope"),
@@ -73,7 +74,7 @@ class TargetsTest {
         for (int i = 0; i < headers.length; i += 2) {
             h.add(headers[i], headers[i + 1]);
         }
-        return new AdapterRequest(
+        return Requests.of(
                 HttpMethod.POST,
                 "/openai/v1/responses",
                 query,

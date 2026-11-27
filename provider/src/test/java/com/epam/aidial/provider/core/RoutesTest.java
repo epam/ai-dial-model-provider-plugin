@@ -2,9 +2,9 @@ package com.epam.aidial.provider.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -91,7 +91,7 @@ class RoutesTest {
     }
 
     private static AdapterResponse handle(Routes table, HttpMethod method, String path) {
-        Future<AdapterResponse> f = table.handle(new AdapterRequest(
+        Future<AdapterResponse> f = table.handle(Requests.of(
                 method,
                 path,
                 null,

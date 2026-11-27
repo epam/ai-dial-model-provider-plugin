@@ -29,7 +29,7 @@ final class Service {
         try {
             int port = freePort();
             Vertx vertx = Vertx.vertx();
-            HttpServerShim shim = new HttpServerShim(ModelProviders.create(vertx, Config.from(Env.all())));
+            HttpServerShim shim = ModelProviders.server(vertx, Config.from(Env.all()));
             vertx.deployVerticle(
                             new ModelProviderVerticle(shim, ModelProviderVerticle.serverOptions("127.0.0.1", port)))
                     .toCompletionStage()

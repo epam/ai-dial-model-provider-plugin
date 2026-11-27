@@ -1,0 +1,50 @@
+---
+name: {{ (mode ~ ": " ~ "the model of the call back is the deployment, whatever the request says") | tojson }}
+request: {headers: {X-DIAL-OVERRIDE-NAME: other}, json: {model: another-model}}
+---
+name: {{ (mode ~ ": " ~ "only the key, the cache policy and the upstream pin go back to DIAL Core") | tojson }}
+request:
+  headers:
+    x-dial-cache-policy: 'no-store'
+    x-upstream-id: 'u-1'
+    authorization: Bearer other
+    x-upstream-endpoint: 'http://h.invalid/v1/responses'
+    x-upstream-key: k
+    x-dial-cache-breakpoint-path: 'prefix.body.messages[0].content[0]'
+    x-request-id: abc
+mocks:
+- request:
+    headers:
+      api-key: dk
+      x-dial-cache-policy: 'no-store'
+      x-upstream-id: 'u-1'
+      authorization: {$absent: true}
+      x-upstream-endpoint: {$absent: true}
+      x-upstream-key: {$absent: true}
+      x-dial-cache-breakpoint-path: {$absent: true}
+      x-request-id: {$absent: true}
+expect: {headers: {x-dial-cache-breakpoint-path: {$absent: true}, x-dial-cache-expire-at: {$absent: true}}}
+---
+name: {{ (mode ~ ": " ~ "a stream request calls back for a stream") | tojson }}
+request: {json: {stream: true}}
+mocks:
+- request: {json: {stream: true}}
+  response:
+    headers: {Content-Type: text/event-stream}
+    json: !delete
+    sse: {events: [{event: response.completed, json: {type: response.completed, response: {id: resp_1, status: completed, output: [], usage: {input_tokens: 1, output_tokens: 1, total_tokens: 2, input_tokens_details: {cached_tokens: 0, cache_write_tokens: 0}, output_tokens_details: {reasoning_tokens: 0}}}}}]}
+expect:
+  headers: {content-type: {$regex: '^text/event-stream'}}
+  json: !delete
+  sse:
+    events:
+    - event: message_start
+      json: {$partial: {type: message_start}}
+    - event: content_block_start
+      json: {$partial: {type: content_block_start}}
+    - event: content_block_stop
+      json: {type: content_block_stop, index: 0}
+    - event: message_delta
+      json: {$partial: {type: message_delta}}
+    - event: message_stop
+      json: {type: message_stop}

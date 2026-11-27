@@ -1,0 +1,150 @@
+---
+name: {{ (mode ~ ": " ~ "thinking disabled is effort none") | tojson }}
+request: {json: {thinking: {type: disabled}}}
+mocks: [{request: {json: {reasoning: {effort: none}}}}]
+---
+name: {{ (mode ~ ": " ~ "thinking disabled outranks an effort") | tojson }}
+request: {json: {thinking: {type: disabled}, output_config: {effort: high}}}
+mocks: [{request: {json: {reasoning: {effort: none}}}}]
+---
+name: {{ (mode ~ ": " ~ "adaptive thinking with an effort asks for a summary") | tojson }}
+request: {json: {thinking: {type: adaptive}, output_config: {effort: high}}}
+mocks: [{request: {json: {reasoning: {effort: high, summary: auto}}}}]
+---
+name: {{ (mode ~ ": " ~ "thinking with a budget asks for a summary and leaves the effort") | tojson }}
+request: {json: {thinking: {type: enabled, budget_tokens: 2000}}}
+mocks: [{request: {json: {reasoning: {summary: auto}}}}]
+---
+name: {{ (mode ~ ": " ~ "effort alone asks for no summary") | tojson }}
+request: {json: {output_config: {effort: medium}}}
+mocks: [{request: {json: {reasoning: {effort: medium}}}}]
+---
+name: {{ (mode ~ ": " ~ "effort of the newest API is taken") | tojson }}
+request: {json: {output_config: {effort: xhigh}}}
+mocks: [{request: {json: {reasoning: {effort: xhigh}}}}]
+---
+name: {{ (mode ~ ": " ~ "thinking that omits its display asks for no summary") | tojson }}
+request: {json: {thinking: {type: adaptive, display: omitted}, output_config: {effort: low}}}
+mocks: [{request: {json: {reasoning: {effort: low}}}}]
+---
+name: {{ (mode ~ ": " ~ "the effort of the last system turn outranks the request's") | tojson }}
+request:
+  json:
+    output_config: {effort: high}
+    messages:
+    - {role: system, content: first, output_config: {effort: medium}}
+    - {role: system, content: second, output_config: {effort: low}}
+    - {role: user, content: hi}
+mocks:
+- request:
+    json:
+      reasoning: {effort: low}
+      input: !replace
+      - {type: message, role: system, content: [{type: input_text, text: first}]}
+      - {type: message, role: system, content: [{type: input_text, text: second}]}
+      - {type: message, role: user, content: [{type: input_text, text: hi}]}
+---
+name: {{ (mode ~ ": " ~ "the effort of a system turn that was cleared is not taken") | tojson }}
+request:
+  json:
+    output_config: {effort: high}
+    messages:
+    - {role: system, content: temp, clear_at: next_user_message, output_config: {effort: low}}
+    - {role: user, content: hi}
+mocks: [{request: {json: {reasoning: {effort: high}}}}]
+---
+name: {{ (mode ~ ": " ~ "effort the Responses API has no word for is refused") | tojson }}
+request: {json: {output_config: {effort: ultra}}}
+mocks: []
+expect: {status: 400, json: !replace {type: error, error: {type: invalid_request_error, message: Cannot convert Anthropic Messages API reasoning effort ultra to an OpenAI reasoning effort}}}
+---
+name: {{ (mode ~ ": " ~ "thinking block of an earlier answer is replayed as a reasoning item") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - role: assistant
+      content: [{type: thinking, thinking: Let me see, signature: !ref /_lib/translate.yaml:signature}, {type: text, text: Hello}]
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: reasoning, id: rs_1, encrypted_content: ENC, summary: [{type: summary_text, text: Let me see}]}
+      - {type: message, role: assistant, content: Hello}
+---
+name: {{ (mode ~ ": " ~ "redacted thinking block of an earlier answer is a reasoning item without a summary") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - role: assistant
+      content: [{type: redacted_thinking, data: !ref /_lib/translate.yaml:signature}, {type: text, text: Hello}]
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: reasoning, id: rs_1, encrypted_content: ENC, summary: []}
+      - {type: message, role: assistant, content: Hello}
+---
+name: {{ (mode ~ ": " ~ "thinking block of another model is dropped with its text, the text block next to it stays") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - role: assistant
+      content: [{type: thinking, thinking: Claude thought this, signature: EqQBCkYIAxgCIkD}, {type: text, text: Hello}]
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: message, role: assistant, content: Hello}
+---
+name: {{ (mode ~ ": " ~ "thinking block without a signature is dropped with its text") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - role: assistant
+      content: [{type: thinking, thinking: Unsigned, signature: ''}, {type: text, text: Hello}]
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: message, role: assistant, content: Hello}
+---
+name: {{ (mode ~ ": " ~ "a signed thinking block next to dropped ones is the only one replayed") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - role: assistant
+      content:
+      - {type: thinking, thinking: Claude thought this, signature: EqQBCkYIAxgCIkD}
+      - {type: thinking, thinking: Our own, signature: !ref /_lib/translate.yaml:signature}
+      - {type: redacted_thinking, data: EqQBCkYIAxgCIkD}
+      - {type: text, text: Hello}
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: reasoning, id: rs_1, encrypted_content: ENC, summary: [{type: summary_text, text: Our own}]}
+      - {type: message, role: assistant, content: Hello}
+---
+name: {{ (mode ~ ": " ~ "signature of another version is not replayed") | tojson }}
+request:
+  json:
+    messages:
+    - {role: user, content: hi}
+    - role: assistant
+      content: [{type: thinking, thinking: Old, signature: '{"dial_translator_reasoning_wrapper":{"version":1,"id":"rs_1","encrypted_content":"ENC"}}'}, {type: text, text: Hello}]
+mocks:
+- request:
+    json:
+      input:
+      - {}
+      - {type: message, role: assistant, content: Hello}

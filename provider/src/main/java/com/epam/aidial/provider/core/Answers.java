@@ -2,7 +2,7 @@ package com.epam.aidial.provider.core;
 
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import java.util.Locale;
@@ -32,7 +32,7 @@ public final class Answers {
     private Answers() {}
 
     /** A provider that throws yields a failed future, so that every failure is handled alike. */
-    public static Future<AdapterResponse> call(ModelProvider provider, AdapterRequest request) {
+    public static Future<AdapterResponse> call(Handler provider, AdapterRequest request) {
         try {
             return provider.handle(request);
         } catch (RuntimeException | StackOverflowError e) {

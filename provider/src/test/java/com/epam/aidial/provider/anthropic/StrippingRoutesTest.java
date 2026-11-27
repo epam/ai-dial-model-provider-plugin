@@ -3,7 +3,6 @@ package com.epam.aidial.provider.anthropic;
 import static com.epam.aidial.provider.testing.MockUpstream.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
@@ -12,6 +11,7 @@ import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
 import com.epam.aidial.provider.credentials.SessionTags;
 import com.epam.aidial.provider.testing.MockUpstream;
+import com.epam.aidial.provider.testing.Requests;
 import com.epam.aidial.provider.testing.RoutesFixture;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -147,7 +147,7 @@ class StrippingRoutesTest {
                 fx.mock().url() + "/",
                 "ANTHROPIC_BASE_URL",
                 fx.mock().url()));
-        vertexMount = mount("/compat/vertexai", Targets.vertexai(vertexConfig), vertexConfig);
+        vertexMount = mount("/compat/vertexai", AnthropicTargets.vertexai(vertexConfig), vertexConfig);
         Config bedrockConfig = Config.from(Map.of(
                 "AWS_DEFAULT_REGION", "us-east-1",
                 "AWS_ACCESS_KEY_ID", "AKID",
@@ -157,12 +157,12 @@ class StrippingRoutesTest {
         AwsCredentials aws = new AwsCredentials(fx.vertx(), bedrockConfig);
         bedrockMount = mount(
                 "/compat/bedrock",
-                Targets.bedrock(
+                AnthropicTargets.bedrock(
                         bedrockConfig, aws, SessionTags.of(bedrockConfig, DialApi.from(fx.vertx(), bedrockConfig))),
                 bedrockConfig);
     }
 
-    private Routes mount(String prefix, Targets.Resolver resolver, Config config) {
+    private Routes mount(String prefix, AnthropicTargets.Resolver resolver, Config config) {
         return Routes.of(new AnthropicRoutes(
                 prefix,
                 resolver,
@@ -244,7 +244,7 @@ class StrippingRoutesTest {
             headers.add("Anthropic-Beta", betas);
         }
         Routes routes = upstream.name().startsWith("BEDROCK") ? bedrockMount : vertexMount;
-        AdapterResponse response = await(routes.handle(new AdapterRequest(
+        AdapterResponse response = await(routes.handle(Requests.of(
                 HttpMethod.POST,
                 endpoint,
                 null,

@@ -15,12 +15,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
-public final class Targets {
+public final class AnthropicTargets {
 
     private static final Pattern FOUNDRY_ENDPOINT = Pattern.compile("^(.*/anthropic)/v1/messages");
     private static final Pattern MESSAGES_ENDPOINT = Pattern.compile("^(.*?)/v1/messages");
 
-    private Targets() {}
+    private AnthropicTargets() {}
 
     /** A configuration that makes no client throws an {@link UpstreamRefusedException}. */
     public interface Resolver {

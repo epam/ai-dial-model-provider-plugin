@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.core.Config;
@@ -17,6 +16,7 @@ import com.epam.aidial.provider.credentials.BedrockToken;
 import com.epam.aidial.provider.credentials.Secret;
 import com.epam.aidial.provider.credentials.SigV4;
 import com.epam.aidial.provider.testing.Await;
+import com.epam.aidial.provider.testing.Requests;
 import com.epam.aidial.provider.testing.RoutesFixture;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import io.vertx.core.Future;
@@ -65,7 +65,7 @@ class ResponsesRoutesTest {
                 fx.vertx(),
                 config,
                 "/compat/openai",
-                Targets.openai(config),
+                OpenAiTargets.openai(config),
                 new UpstreamClient(fx.vertx(), config.proxies(), config.openai()),
                 new AzureAd((scope, aborted) -> Future.succeededFuture("aad-tok"), "scope"),
                 aws,
@@ -81,7 +81,7 @@ class ResponsesRoutesTest {
     void createServesTheRequestOfAnotherPathAsTheResponsesRouteDoes() throws Exception {
         fx.mock().reply("/v1/responses", 200, Map.of("Content-Type", "application/json"), "{\"id\":\"resp_1\"}");
         AdapterResponse answer = await(responsesRoutes()
-                .create(new AdapterRequest(
+                .create(Requests.of(
                         HttpMethod.POST,
                         "/anthropic/v1/messages",
                         null,
@@ -131,7 +131,7 @@ class ResponsesRoutesTest {
         MultiMap h = MultiMap.caseInsensitiveMultiMap()
                 .add("X-Upstream-Endpoint", fx.mock().url() + "/hold/v1/responses")
                 .add("X-Upstream-Key", "k");
-        Future<AdapterResponse> answer = routes.handle(new AdapterRequest(
+        Future<AdapterResponse> answer = routes.handle(Requests.of(
                 HttpMethod.POST,
                 "/openai/v1/responses",
                 null,
@@ -199,7 +199,7 @@ class ResponsesRoutesTest {
         fx.mock().on("/v1/responses", r -> fx.vertx()
                 .setTimer(2500, t -> r.response().end("{}")));
         Routes routes = routes("HTTP_MAX_CONNECTIONS", "1", "HTTP_POOL_TIMEOUT", "1");
-        Future<AdapterResponse> held = routes.handle(new AdapterRequest(
+        Future<AdapterResponse> held = routes.handle(Requests.of(
                 HttpMethod.POST,
                 "/openai/v1/responses",
                 null,

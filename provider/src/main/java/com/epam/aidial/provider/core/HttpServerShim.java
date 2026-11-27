@@ -3,10 +3,9 @@ package com.epam.aidial.provider.core;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import io.netty.buffer.Unpooled;
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
@@ -18,7 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Shared by every server verticle of a process, so it holds no per-event-loop state. */
-public final class HttpServerShim implements Handler<HttpServerRequest> {
+public final class HttpServerShim implements io.vertx.core.Handler<HttpServerRequest> {
 
     private static final Logger log = LoggerFactory.getLogger(HttpServerShim.class);
 
@@ -26,14 +25,19 @@ public final class HttpServerShim implements Handler<HttpServerRequest> {
     private static final int PRESIZED_MAX = 64 << 20;
 
     /** A complete body's connection errors are the response's: its closeHandler aborts the exchange. */
-    private static final Handler<Throwable> IGNORED = e -> {};
+    private static final io.vertx.core.Handler<Throwable> IGNORED = e -> {};
 
-    private final ModelProvider provider;
+    private final Handler provider;
+    private final Handler core;
     private final AtomicInteger inFlight = new AtomicInteger();
     private volatile boolean draining;
 
-    public HttpServerShim(ModelProvider provider) {
+    /**
+     * @param core DIAL Core's create operations for the requests served (see {@link AdapterRequest#core()})
+     */
+    public HttpServerShim(Handler provider, Handler core) {
         this.provider = provider;
+        this.core = core;
     }
 
     public int inFlight() {
@@ -109,7 +113,7 @@ public final class HttpServerShim implements Handler<HttpServerRequest> {
 
         void dispatch(Buffer body) {
             AdapterRequest adapterRequest = new AdapterRequest(
-                    request.method(), request.path(), request.query(), request.headers(), body, aborted.future());
+                    request.method(), request.path(), request.query(), request.headers(), body, aborted.future(), core);
             Answers.call(provider, adapterRequest).onComplete(ar -> {
                 if (response.closed()) {
                     return; // the client is gone; the provider saw it through aborted

@@ -1,10 +1,9 @@
 package com.epam.aidial.provider.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -16,22 +15,12 @@ import org.junit.jupiter.api.Test;
 class AdapterRequestTest {
 
     private static AdapterRequest request(MultiMap headers) {
-        return new AdapterRequest(
+        return Requests.of(
                 HttpMethod.POST, "/v1/messages", null, headers, Buffer.buffer(), Future.<Void>future(p -> {}));
     }
 
-    @Test
-    void asksForCacheBreakpointWhenTheHeaderIsThere() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        assertFalse(request(headers).asksForCacheBreakpoint());
-
-        headers.set("x-dial-cache-breakpoint-path", "");
-
-        assertTrue(request(headers).asksForCacheBreakpoint());
-    }
-
     private static AdapterRequest withQuery(String query) {
-        return new AdapterRequest(
+        return Requests.of(
                 HttpMethod.GET,
                 "/v1/responses",
                 query,

@@ -34,11 +34,18 @@ dependencies {
     testImplementation pluginApi
     testImplementation "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
     testImplementation rootProject.project(':provider').sourceSets.test.output
+    // The HTTP cases' runner (provider's test output) reads them
+    testImplementation "org.yaml:snakeyaml:${snakeyaml_version}"
 }
 
-// What crosses the plugin API, and the logging API: DIAL Core's own copies must be the ones loaded.
-def providedByCore = { String group ->
-    group in ['io.vertx', 'io.netty', 'org.slf4j'] || group.startsWith('com.fasterxml.jackson')
+// What crosses the plugin API, the logging API and the telemetry API: DIAL Core's own copies must be the ones loaded.
+// Of Jackson only what DIAL Core is known to ship (core, databind, annotations, the YAML format) is left out: the SDKs'
+// JSON mapper also needs the Kotlin, JDK 8 and JSR-310 modules, which the plugin carries itself.
+def bundledJackson = ['jackson-module-kotlin', 'jackson-datatype-jdk8', 'jackson-datatype-jsr310']
+def providedByCore = { dependency ->
+    String group = dependency.moduleGroup
+    group in ['io.vertx', 'io.netty', 'org.slf4j', 'io.opentelemetry']
+            || (group.startsWith('com.fasterxml.jackson') && !(dependency.moduleName in bundledJackson))
 }
 
 // One jar with everything the plugin needs of its own (the provider module and its dependencies, the META-INF/services
@@ -50,7 +57,7 @@ tasks.register('pluginJar', com.github.jengelman.gradle.plugins.shadow.tasks.Sha
     from sourceSets.main.output
     configurations = [project.configurations.runtimeClasspath]
     dependencies {
-        exclude { providedByCore(it.moduleGroup) }
+        exclude { providedByCore(it) }
     }
     // The merge sees every copy of a service file only when duplicates of it are included (Shadow 9 drops them first).
     filesMatching('META-INF/services/**') {
@@ -64,9 +71,17 @@ tasks.register('pluginJar', com.github.jengelman.gradle.plugins.shadow.tasks.Sha
     // The signatures of the merged jars (Azure's MSFTSIG) do not hold for the merged jar, and one module descriptor is wrong for it.
     exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/MSFTSIG.*'
     exclude 'module-info.class', 'META-INF/versions/*/module-info.class'
+    // The SDKs' generated models are tens of thousands of classes: more entries than a plain zip holds (65535).
+    zip64 = true
     archiveBaseName = 'aidial-model-provider-plugin'
     archiveClassifier = ''
     destinationDirectory = layout.buildDirectory.dir('plugins')
+}
+
+// The Shadow plugin's own shadowJar (part of assemble, so of build) would pack the same classes without pluginJar's
+// exclusions, and fails on the 65535 entries limit: pluginJar is the plugin's jar.
+tasks.named('shadowJar') {
+    enabled = false
 }
 
 // PluginJarIsolationTest loads the jar the way DIAL Core does, so the test needs the built jar.

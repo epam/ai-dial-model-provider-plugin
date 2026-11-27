@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
+import com.epam.aidial.provider.api.CacheHeaders;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.Routes;
@@ -21,6 +22,7 @@ import com.epam.aidial.provider.credentials.GoogleTokenSource;
 import com.epam.aidial.provider.json.Json;
 import com.epam.aidial.provider.testing.Await;
 import com.epam.aidial.provider.testing.MockUpstream;
+import com.epam.aidial.provider.testing.Requests;
 import com.epam.aidial.provider.testing.RoutesFixture;
 import com.epam.aidial.provider.upstream.Limits;
 import com.epam.aidial.provider.upstream.UpstreamClient;
@@ -84,11 +86,11 @@ class AnthropicRoutesTest {
                 fx.mock().url() + "/",
                 "ANTHROPIC_BASE_URL",
                 fx.mock().url()));
-        return routes(Targets.vertexai(config), limits(cap, waitMillis));
+        return routes(AnthropicTargets.vertexai(config), limits(cap, waitMillis));
     }
 
     private Routes openai() {
-        return routes(Targets.openai(), limits(10, 10_000));
+        return routes(AnthropicTargets.openai(), limits(10, 10_000));
     }
 
     private static Limits limits(int cap, long waitMillis) {
@@ -96,7 +98,7 @@ class AnthropicRoutesTest {
                 cap, new Limits.PoolWait.Bounded(Duration.ofMillis(waitMillis)), Duration.ofMillis(600_000));
     }
 
-    private Routes routes(Targets.Resolver resolver, Limits limits) {
+    private Routes routes(AnthropicTargets.Resolver resolver, Limits limits) {
         UpstreamClient client =
                 new UpstreamClient(fx.vertx(), Config.from(Map.of()).proxies(), limits);
         AzureTokenSource source = (scope, aborted) -> azureFails
@@ -126,7 +128,7 @@ class AnthropicRoutesTest {
                 .add("Anthropic-Beta", "prompt-caching-scope-2026-01-05, context-1m-2025-08-07")
                 .add("X-Other", "dropped");
         AdapterResponse response = await(vertex(10, 10_000)
-                .handle(new AdapterRequest(
+                .handle(Requests.of(
                         HttpMethod.POST,
                         "/anthropic/v1/messages",
                         null,
@@ -148,9 +150,8 @@ class AnthropicRoutesTest {
         assertEquals("context-1m-2025-08-07", seen.headers().get("Anthropic-Beta"));
         assertNull(seen.headers().get("X-Other"));
         assertNull(seen.headers().get("Anthropic-Version"));
-        assertEquals(
-                "prefix.body.messages[0].content[0]", response.headers().get(AdapterResponse.CACHE_BREAKPOINT_HEADER));
-        assertEquals("4600", response.headers().get(AdapterResponse.CACHE_EXPIRE_AT_HEADER));
+        assertEquals("prefix.body.messages[0].content[0]", response.headers().get(CacheHeaders.BREAKPOINT));
+        assertEquals("4600", response.headers().get(CacheHeaders.EXPIRE_AT));
     }
 
     /**
@@ -168,7 +169,7 @@ class AnthropicRoutesTest {
             if (c[0] != null) {
                 settings.put("GCP_DEFAULT_REGION", c[0]);
             }
-            Routes routes = routes(Targets.vertexai(Config.from(settings)), limits(10, 10_000));
+            Routes routes = routes(AnthropicTargets.vertexai(Config.from(settings)), limits(10, 10_000));
             fx.post(routes, "/anthropic/v1/messages", "{\"model\":\"m\",\"messages\":[]}", Map.of());
             assertEquals(
                     "/projects/p/locations/" + c[2] + "/publishers/anthropic/models/m:rawPredict",
@@ -225,7 +226,7 @@ class AnthropicRoutesTest {
                 .add("Anthropic-Beta", "a, b")
                 .add("Anthropic-Beta", "c");
         await(vertex(10, 10_000)
-                .handle(new AdapterRequest(
+                .handle(Requests.of(
                         HttpMethod.POST,
                         "/anthropic/v1/messages",
                         null,
@@ -239,7 +240,7 @@ class AnthropicRoutesTest {
                 .add("Anthropic-Beta", "a, b")
                 .add("Anthropic-Beta", "c");
         await(vertex(10, 10_000)
-                .handle(new AdapterRequest(
+                .handle(Requests.of(
                         HttpMethod.POST,
                         "/anthropic/v1/messages",
                         null,
@@ -452,7 +453,7 @@ class AnthropicRoutesTest {
         MultiMap h = MultiMap.caseInsensitiveMultiMap()
                 .add("X-Upstream-Endpoint", fx.mock().url() + "/hold/v1/messages")
                 .add("X-Upstream-Key", "k");
-        Future<AdapterResponse> answer = routes.handle(new AdapterRequest(
+        Future<AdapterResponse> answer = routes.handle(Requests.of(
                 HttpMethod.POST,
                 "/anthropic/v1/messages",
                 null,
@@ -473,8 +474,7 @@ class AnthropicRoutesTest {
                 "{\"model\":\"m\",\"messages\":" + prompt + "}",
                 Map.of("X-Upstream-Endpoint", fx.mock().url() + "/anthropic/v1/messages", "X-Upstream-Key", "k"));
         assertEquals(200, response.status());
-        assertEquals(
-                "prefix.body.messages[0].content[0]", response.headers().get(AdapterResponse.CACHE_BREAKPOINT_HEADER));
+        assertEquals("prefix.body.messages[0].content[0]", response.headers().get(CacheHeaders.BREAKPOINT));
     }
 
     @Test
@@ -486,7 +486,7 @@ class AnthropicRoutesTest {
                 "{\"model\":\"m\",\"messages\":" + PROMPT + "}",
                 Map.of("X-Upstream-Endpoint", fx.mock().url() + "/anthropic/v1/messages", "X-Upstream-Key", "k"));
         assertEquals(201, response.status());
-        assertNull(response.headers().get(AdapterResponse.CACHE_BREAKPOINT_HEADER));
+        assertNull(response.headers().get(CacheHeaders.BREAKPOINT));
     }
 
     @Test
@@ -646,7 +646,7 @@ class AnthropicRoutesTest {
                 Map.of("X-Upstream-Endpoint", fx.mock().url() + "/anthropic/v1/messages", "X-Upstream-Key", "k");
         MultiMap h = MultiMap.caseInsensitiveMultiMap();
         foundry.forEach(h::add);
-        Future<AdapterResponse> holder = routes.handle(new AdapterRequest(
+        Future<AdapterResponse> holder = routes.handle(Requests.of(
                 HttpMethod.POST,
                 "/anthropic/v1/messages",
                 null,
@@ -666,7 +666,7 @@ class AnthropicRoutesTest {
 
     @Test
     void openaiTargets() throws Exception {
-        Targets.Resolver openai = Targets.openai();
+        AnthropicTargets.Resolver openai = AnthropicTargets.openai();
         Target.Foundry foundry = assertInstanceOf(
                 Target.Foundry.class,
                 openai.resolve(request(
@@ -694,7 +694,7 @@ class AnthropicRoutesTest {
     private static AdapterRequest request(Map<String, String> headers) {
         MultiMap h = MultiMap.caseInsensitiveMultiMap();
         headers.forEach(h::add);
-        return new AdapterRequest(
+        return Requests.of(
                 HttpMethod.POST,
                 "/anthropic/v1/messages",
                 null,

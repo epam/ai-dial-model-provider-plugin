@@ -18,7 +18,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.type.LogicalType;
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -70,17 +72,19 @@ public record Settings(
                 @JsonSetter(contentNulls = Nulls.FAIL)
                 @Nullable
                 Map<String, String> awsSessionTags,
-        @JsonProperty("HTTP_PROXY")
-                @JsonPropertyDescription("Proxy URL for upstream calls over HTTP. All adapters.")
+        @JsonProperty("http_proxy")
+                @JsonPropertyDescription(
+                        "Proxy URL for upstream calls over HTTP. In the process environment, http_proxy, else HTTP_PROXY. All adapters.")
                 @Nullable
                 String httpProxy,
-        @JsonProperty("HTTPS_PROXY")
-                @JsonPropertyDescription("Proxy URL for upstream calls over HTTPS. All adapters.")
+        @JsonProperty("https_proxy")
+                @JsonPropertyDescription(
+                        "Proxy URL for upstream calls over HTTPS. In the process environment, https_proxy, else HTTPS_PROXY. All adapters.")
                 @Nullable
                 String httpsProxy,
-        @JsonProperty("NO_PROXY")
+        @JsonProperty("no_proxy")
                 @JsonPropertyDescription(
-                        "Comma-separated hosts that upstream calls reach without the proxy. All adapters.")
+                        "Comma-separated hosts that upstream calls reach without the proxy. In the process environment, no_proxy, else NO_PROXY. All adapters.")
                 @Nullable
                 String noProxy,
         @JsonProperty("DIAL_URL")
@@ -182,20 +186,6 @@ public record Settings(
                         "STS endpoint for assuming roles, when AWS_ENDPOINT_URL_STS is not set. Adapter: bedrock.")
                 @Nullable
                 String awsEndpointUrl,
-        @JsonProperty("http_proxy")
-                @JsonPropertyDescription(
-                        "Lower-case form of HTTP_PROXY, used when it is not set or empty. All adapters.")
-                @Nullable
-                String httpProxyLowerCase,
-        @JsonProperty("https_proxy")
-                @JsonPropertyDescription(
-                        "Lower-case form of HTTPS_PROXY, used when it is not set or empty. All adapters.")
-                @Nullable
-                String httpsProxyLowerCase,
-        @JsonProperty("no_proxy")
-                @JsonPropertyDescription("Lower-case form of NO_PROXY, used when it is not set or empty. All adapters.")
-                @Nullable
-                String noProxyLowerCase,
         @JsonProperty("DEFAULT_REGION")
                 @JsonPropertyDescription(
                         "Deprecated: the region when GCP_DEFAULT_REGION is not set or empty. Adapter: vertexai.")
@@ -215,6 +205,8 @@ public record Settings(
     public static final String ADAPTER = "adapter";
 
     private static final String TAGS = "AWS_SESSION_TAGS";
+
+    private static final Set<String> PROXIES = Set.of("http_proxy", "https_proxy", "no_proxy");
 
     /**
      * Lax, as the schema is the strict one: text is an integer when it reads as one, and a number is the text of a
@@ -265,12 +257,18 @@ public record Settings(
         ObjectNode merged = MAPPER.createObjectNode();
         Arrays.stream(Settings.class.getRecordComponents())
                 .map(Settings::name)
-                .filter(name -> !name.equals(ADAPTER) && environment.containsKey(name))
-                .forEach(name -> merged.set(name, environment(name, environment.get(name))));
+                .filter(name -> !name.equals(ADAPTER) && lookup(name, environment) != null)
+                .forEach(name -> merged.set(name, environment(name, lookup(name, environment))));
         entry.properties().stream()
                 .filter(property -> !property.getValue().isNull())
                 .forEach(property -> merged.set(property.getKey(), property.getValue()));
         return merged;
+    }
+
+    /** A proxy is set by its lower-case name, else by its upper-case name, even when the lower-case one is empty. */
+    private static @Nullable String lookup(String name, Map<String, String> environment) {
+        String value = environment.get(name);
+        return value == null && PROXIES.contains(name) ? environment.get(name.toUpperCase(Locale.ROOT)) : value;
     }
 
     /** The session tags are the JSON of an object in the environment. */

@@ -16,12 +16,12 @@ import org.junit.jupiter.api.Test;
 class ProxiesTest {
 
     private static Proxies proxies(Map<String, String> settings) {
-        return new Proxies(settings::get);
+        return new Proxies(settings.get("http_proxy"), settings.get("https_proxy"), settings.get("no_proxy"));
     }
 
     @Test
     void schemePicksTheProxy() {
-        Proxies p = proxies(Map.of("HTTP_PROXY", "plain.test:3128", "https_proxy", "https://user:pw@secure.test"));
+        Proxies p = proxies(Map.of("http_proxy", "plain.test:3128", "https_proxy", "https://user:pw@secure.test"));
         assertEquals("plain.test", p.forRequest(false, "up.test", 80).getHost());
         assertEquals(3128, p.forRequest(false, "up.test", 80).getPort());
         assertEquals("secure.test", p.forRequest(true, "up.test", 443).getHost());
@@ -31,25 +31,15 @@ class ProxiesTest {
     }
 
     @Test
-    void uppercaseNameWinsAndEmptyIsUnset() {
-        assertEquals(
-                "upper.test",
-                proxies(Map.of("HTTP_PROXY", "upper.test", "http_proxy", "lower.test"))
-                        .forRequest(false, "up.test", 80)
-                        .getHost());
-        assertEquals(
-                "lower.test",
-                proxies(Map.of("HTTP_PROXY", "", "http_proxy", "lower.test"))
-                        .forRequest(false, "up.test", 80)
-                        .getHost());
-        assertNull(proxies(Map.of("HTTP_PROXY", "")).forRequest(false, "up.test", 80));
+    void emptyIsUnset() {
+        assertNull(proxies(Map.of("http_proxy", "")).forRequest(false, "up.test", 80));
         assertNull(proxies(Map.of()).forRequest(true, "up.test", 443));
     }
 
     @Test
     void noProxyNamesPortsAndWildcard() {
         Proxies p = proxies(
-                Map.of("HTTP_PROXY", "proxy.test:1", "NO_PROXY", " Plain.Test, .sub.test, port.test:8080, [::2]:9, "));
+                Map.of("http_proxy", "proxy.test:1", "no_proxy", " Plain.Test, .sub.test, port.test:8080, [::2]:9, "));
         assertNull(p.forRequest(false, "plain.test", 80));
         assertNull(p.forRequest(false, "deep.plain.test", 80));
         assertNull(p.forRequest(false, "PLAIN.test", 80));
@@ -58,15 +48,15 @@ class ProxiesTest {
         assertNotNull(p.forRequest(false, "sub.test", 80));
         assertNull(p.forRequest(false, "port.test", 8080));
         assertNotNull(p.forRequest(false, "port.test", 80));
-        assertNotNull(proxies(Map.of("HTTP_PROXY", "proxy.test:1", "NO_PROXY", "a.test"))
+        assertNotNull(proxies(Map.of("http_proxy", "proxy.test:1", "no_proxy", "a.test"))
                 .forRequest(false, "b.test", 80));
-        assertNull(proxies(Map.of("HTTP_PROXY", "proxy.test:1", "no_proxy", "x.test, *"))
+        assertNull(proxies(Map.of("http_proxy", "proxy.test:1", "no_proxy", "x.test, *"))
                 .forRequest(false, "b.test", 80));
     }
 
     @Test
     void loopbackIsNeverProxied() {
-        Proxies p = proxies(Map.of("HTTP_PROXY", "proxy.test:1"));
+        Proxies p = proxies(Map.of("http_proxy", "proxy.test:1"));
         assertNull(p.forRequest(false, "localhost", 80));
         assertNull(p.forRequest(false, "127.0.0.1", 80));
         assertNull(p.forRequest(false, "[::1]", 80));
@@ -76,7 +66,7 @@ class ProxiesTest {
 
     @Test
     void selectorAnswersForTheTokenClients() {
-        ProxySelector selector = proxies(Map.of("HTTPS_PROXY", "proxy.test:3128", "NO_PROXY", "skip.test"))
+        ProxySelector selector = proxies(Map.of("https_proxy", "proxy.test:3128", "no_proxy", "skip.test"))
                 .selector();
         Proxy via = selector.select(URI.create("https://login.test/token")).get(0);
         assertEquals(Proxy.Type.HTTP, via.type());
@@ -93,31 +83,31 @@ class ProxiesTest {
     void noProxyPortAbove65535RefusesTheSetting() {
         ConfigException e = assertThrows(
                 ConfigException.class,
-                () -> proxies(Map.of("HTTP_PROXY", "proxy.test:1", "NO_PROXY", "host.test:99999999999")));
-        assertEquals("NO_PROXY", e.setting());
-        assertEquals("NO_PROXY has an entry with a port above 65535", e.getMessage());
+                () -> proxies(Map.of("http_proxy", "proxy.test:1", "no_proxy", "host.test:99999999999")));
+        assertEquals("no_proxy", e.setting());
+        assertEquals("no_proxy has an entry with a port above 65535", e.getMessage());
         assertEquals(
-                "NO_PROXY has an entry with a port above 65535",
-                assertThrows(ConfigException.class, () -> proxies(Map.of("NO_PROXY", "host.test:65536")))
+                "no_proxy has an entry with a port above 65535",
+                assertThrows(ConfigException.class, () -> proxies(Map.of("no_proxy", "host.test:65536")))
                         .getMessage());
-        assertNull(proxies(Map.of("HTTP_PROXY", "proxy.test:1", "NO_PROXY", "host.test:65535"))
+        assertNull(proxies(Map.of("http_proxy", "proxy.test:1", "no_proxy", "host.test:65535"))
                 .forRequest(false, "host.test", 65535));
     }
 
     @Test
     void proxyWithoutHostRefusesTheSetting() {
         for (String url : new String[] {"http://:8080", "http://proxy:99999999999"}) {
-            ConfigException e = assertThrows(ConfigException.class, () -> proxies(Map.of("HTTP_PROXY", url)), url);
-            assertEquals("HTTP_PROXY", e.setting());
-            assertEquals("HTTP_PROXY has no host", e.getMessage(), url);
+            ConfigException e = assertThrows(ConfigException.class, () -> proxies(Map.of("http_proxy", url)), url);
+            assertEquals("http_proxy", e.setting());
+            assertEquals("http_proxy has no host", e.getMessage(), url);
         }
     }
 
     @Test
     void unreadableProxyUrlIsRefusedWithoutItsValue() {
         ConfigException e = assertThrows(
-                ConfigException.class, () -> proxies(Map.of("HTTPS_PROXY", "http://user:p@ss word@proxy:3128")));
-        assertEquals("HTTPS_PROXY is not a valid proxy URL", e.getMessage());
+                ConfigException.class, () -> proxies(Map.of("https_proxy", "http://user:p@ss word@proxy:3128")));
+        assertEquals("https_proxy is not a valid proxy URL", e.getMessage());
         assertNull(e.getCause());
     }
 }

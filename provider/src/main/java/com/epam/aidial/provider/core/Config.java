@@ -104,15 +104,7 @@ public final class Config {
     }
 
     public Proxies proxies() {
-        return new Proxies(name -> switch (name) {
-            case "HTTP_PROXY" -> settings.httpProxy();
-            case "http_proxy" -> settings.httpProxyLowerCase();
-            case "HTTPS_PROXY" -> settings.httpsProxy();
-            case "https_proxy" -> settings.httpsProxyLowerCase();
-            case "NO_PROXY" -> settings.noProxy();
-            case "no_proxy" -> settings.noProxyLowerCase();
-            default -> throw new IllegalArgumentException(name);
-        });
+        return new Proxies(settings.httpProxy(), settings.httpsProxy(), settings.noProxy());
     }
 
     public String anthropicBaseUrl() {

@@ -52,7 +52,7 @@ class ProviderSchemasTest {
     @Test
     void everyVariableIsDescribed() {
         JsonNode properties = modelProvider.get("properties");
-        assertEquals(39, properties.size());
+        assertEquals(36, properties.size());
         properties.forEach(property -> assertTrue(property.hasNonNull("description"), property.toString()));
     }
 
@@ -101,7 +101,7 @@ class ProviderSchemasTest {
     void modelProviderSettingsHaveTheirTypes() throws Exception {
         String settings =
                 """
-                {"adapter": "bedrock", "HTTP_MAX_CONNECTIONS": 10, "HTTP_POOL_TIMEOUT": 10, "NO_PROXY": "a,b",
+                {"adapter": "bedrock", "HTTP_MAX_CONNECTIONS": 10, "HTTP_POOL_TIMEOUT": 10, "no_proxy": "a,b",
                  "SSE_HEARTBEAT_INTERVAL": 0, "AWS_SESSION_TAGS": {"team": "UserInfo.team"},
                  "http_proxy": "http://proxy"}
                 """;

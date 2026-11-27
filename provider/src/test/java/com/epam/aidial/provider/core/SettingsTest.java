@@ -79,13 +79,37 @@ class SettingsTest {
                 entry(
                         """
                         {"HTTP_MAX_CONNECTIONS": "64", "SSE_HEARTBEAT_INTERVAL": "15", "DIAL_URL": 1,
-                         "NO_PROXY": true, "AWS_SESSION_TAGS": {"a": "b"}}"""),
+                         "no_proxy": true, "AWS_SESSION_TAGS": {"a": "b"}}"""),
                 Map.of());
         assertEquals(64, settings.httpMaxConnections());
         assertEquals(15, settings.sseHeartbeatInterval());
         assertEquals("1", settings.dialUrl());
         assertEquals("true", settings.noProxy());
         assertEquals(Map.of("a", "b"), settings.awsSessionTags());
+    }
+
+    /** Lower case wins, even when empty; upper case is read only when the lower-case name is not set. */
+    @Test
+    void lowerCaseProxyOfTheEnvironmentWinsOverUpperCase() {
+        Settings settings = Settings.from(Map.of(
+                "HTTP_PROXY",
+                "upper",
+                "http_proxy",
+                "lower",
+                "HTTPS_PROXY",
+                "upper",
+                "https_proxy",
+                "",
+                "NO_PROXY",
+                "upper"));
+        assertEquals("lower", settings.httpProxy());
+        assertEquals("", settings.httpsProxy());
+        assertEquals("upper", settings.noProxy());
+    }
+
+    @Test
+    void upperCaseProxyIsNoSettingOfAnEntry() {
+        assertThrows(ConfigException.class, () -> Settings.of(entry("{\"HTTP_PROXY\": \"p\"}"), Map.of()));
     }
 
     @Test

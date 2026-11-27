@@ -10,8 +10,9 @@ import com.epam.aidial.provider.ModelProviders;
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.testing.Await;
+import com.epam.aidial.provider.testing.Requests;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -114,7 +115,7 @@ class CompatRouterTest {
 
     @Test
     void mountPrefixesArePathsAndNeverNested() {
-        ModelProvider none = r -> Future.succeededFuture(AdapterResponse.json(200, "{}"));
+        Handler none = r -> Future.succeededFuture(AdapterResponse.json(200, "{}"));
         for (String bad : List.of("", "/", "compat", "/compat/")) {
             assertThrows(IllegalArgumentException.class, () -> new CompatRouter(Map.of(bad, none)), bad);
         }
@@ -181,6 +182,34 @@ class CompatRouterTest {
     }
 
     @Test
+    void translatorIsServedBelowItsOwnPrefix() throws Exception {
+        Vertx vertx = Vertx.vertx();
+        try {
+            CompatRouter served = ModelProviders.create(vertx, Config.from(Map.of()));
+            AdapterResponse messages =
+                    await(served.handle(request(HttpMethod.POST, "/openaiResponses/anthropic/v1/messages", null)));
+            assertEquals(400, messages.status(), "the translator answers: this body has no messages");
+            assertEquals("application/json", messages.headers().get("Content-Type"));
+            assertTrue(body(messages).contains("messages` is not set"), body(messages));
+            AdapterResponse other =
+                    await(served.handle(request(HttpMethod.GET, "/openaiResponses/anthropic/v1/messages", null)));
+            assertEquals(404, other.status());
+            assertEquals(
+                    "{\"error\":{\"message\":\"Endpoint not supported\","
+                            + "\"type\":\"not_found_error\"},\"type\":\"error\"}\n",
+                    body(other));
+            for (String path : List.of("/openaiResponses", "/openaiResponsesX/anthropic/v1/messages")) {
+                AdapterResponse r = await(served.handle(request(HttpMethod.POST, path, null)));
+                assertEquals(404, r.status(), path);
+                assertEquals("{\"detail\":\"Not Found\"}", body(r), path);
+            }
+            served.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        } finally {
+            vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     void closeClosesUpstreamConnections() throws Exception {
         Vertx vertx = Vertx.vertx();
         try {
@@ -216,7 +245,7 @@ class CompatRouterTest {
                 if (call[1] != null) {
                     headers.set("X-Upstream-Endpoint", call[1]);
                 }
-                AdapterResponse answer = served.handle(new AdapterRequest(
+                AdapterResponse answer = served.handle(Requests.of(
                                 HttpMethod.POST,
                                 call[0],
                                 null,
@@ -288,7 +317,7 @@ class CompatRouterTest {
     private static AdapterRequest post(String path, String endpoint, String body, Future<Void> aborted) {
         MultiMap headers =
                 MultiMap.caseInsensitiveMultiMap().set("X-Upstream-Key", "k").set("X-Upstream-Endpoint", endpoint);
-        return new AdapterRequest(HttpMethod.POST, path, null, headers, Buffer.buffer(body), aborted);
+        return Requests.of(HttpMethod.POST, path, null, headers, Buffer.buffer(body), aborted);
     }
 
     private AdapterResponse handle(HttpMethod method, String path) {
@@ -297,7 +326,7 @@ class CompatRouterTest {
 
     private static AdapterRequest request(HttpMethod method, String path, String query) {
         MultiMap headers = MultiMap.caseInsensitiveMultiMap().set("Api-Key", "k");
-        return new AdapterRequest(
+        return Requests.of(
                 method,
                 path,
                 query,

@@ -15,9 +15,18 @@ import org.jspecify.annotations.Nullable;
  * @param query   the raw query string, without {@code ?}; {@code null} when the request has none
  * @param aborted completes when the caller goes away before the response has ended; a provider cancels the
  *                upstream call it made for the request
+ * @param core    DIAL Core's create operations, for the translator that calls DIAL Core back: in the process of DIAL
+ *                Core with the credentials of the request being served for a plugin (the plugin API's host), over
+ *                HTTP for a service
  */
 public record AdapterRequest(
-        HttpMethod method, String path, String query, MultiMap headers, Buffer body, Future<Void> aborted) {
+        HttpMethod method,
+        String path,
+        String query,
+        MultiMap headers,
+        Buffer body,
+        Future<Void> aborted,
+        Handler core) {
 
     public static final String ENDPOINT_HEADER = "X-Upstream-Endpoint";
 
@@ -46,11 +55,6 @@ public record AdapterRequest(
             throw new InvalidRequestException("api-version is a required query parameter");
         }
         return version;
-    }
-
-    /** DIAL Core sends the header for a deployment it marks as auto-cached; the response then names a breakpoint. */
-    public boolean asksForCacheBreakpoint() {
-        return headers.contains(AdapterResponse.CACHE_BREAKPOINT_HEADER);
     }
 
     /**
@@ -83,12 +87,16 @@ public record AdapterRequest(
         }
     }
 
+    public AdapterRequest withHeaders(MultiMap newHeaders) {
+        return new AdapterRequest(method, path, query, newHeaders, body, aborted, core);
+    }
+
     public AdapterRequest withPath(String newPath) {
-        return new AdapterRequest(method, newPath, query, headers, body, aborted);
+        return new AdapterRequest(method, newPath, query, headers, body, aborted, core);
     }
 
     /** For the functions that outlive the upstream send (see {@code Unsent}): a captured request keeps its body. */
     public AdapterRequest withoutBody() {
-        return new AdapterRequest(method, path, query, headers, Buffer.buffer(), aborted);
+        return new AdapterRequest(method, path, query, headers, Buffer.buffer(), aborted, core);
     }
 }

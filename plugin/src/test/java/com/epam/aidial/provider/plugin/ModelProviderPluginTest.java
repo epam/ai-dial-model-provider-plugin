@@ -18,6 +18,7 @@ import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.HttpServerShim;
 import com.epam.aidial.provider.core.ModelProviderVerticle;
 import com.epam.aidial.provider.testing.MockUpstream;
+import com.epam.aidial.provider.testing.Requests;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Context;
@@ -202,7 +203,7 @@ class ModelProviderPluginTest {
 
         CompatRouter router = ModelProviders.create(vertx, Config.from(Map.of()));
         HttpServer server = await(vertx.createHttpServer(ModelProviderVerticle.serverOptions("127.0.0.1", 0))
-                .requestHandler(new HttpServerShim(router))
+                .requestHandler(new HttpServerShim(router, Requests.NO_CORE))
                 .listen());
         Buffer[] read = new Buffer[1]; // read in the same chain: a body asked for later may have gone by
         HttpClientResponse standalone = await(vertx.createHttpClient()
@@ -427,7 +428,7 @@ class ModelProviderPluginTest {
         List<String> types = ServiceLoader.load(PluginProvider.class).stream()
                 .map(p -> p.get().type())
                 .toList();
-        assertEquals(List.of("model-provider"), types);
+        assertEquals(List.of("model-provider", "translator"), types);
     }
 
     private Plugin plugin(Map<String, String> environment, ObjectNode settings) {

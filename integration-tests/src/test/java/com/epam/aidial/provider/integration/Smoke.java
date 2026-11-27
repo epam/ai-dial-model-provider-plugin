@@ -68,7 +68,7 @@ public final class Smoke {
         System.out.println("%nModels (one question each, through the service)".formatted());
         List<Row> rows = probe();
         rows.forEach(r -> System.out.printf(
-                "  %-6s %-9s %-18s %-38s %-14s %s%n", r.cloud(), r.api(), r.via(), r.model(), r.verdict(), r.detail()));
+                "  %-6s %-9s %-32s %-38s %-14s %s%n", r.cloud(), r.api(), r.via(), r.model(), r.verdict(), r.detail()));
 
         report(logins, rows);
         System.exit(

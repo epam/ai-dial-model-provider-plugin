@@ -2,7 +2,7 @@ package com.epam.aidial.provider.core;
 
 import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import java.util.Map;
@@ -13,16 +13,16 @@ import java.util.function.Supplier;
  * mount at {@code /compat/openai} as {@code /x}. Besides the mounts, {@code /health} is the process's own; anything
  * else is a 404.
  */
-public final class CompatRouter implements ModelProvider {
+public final class CompatRouter implements Handler {
 
-    private final Map<String, ModelProvider> mounts;
+    private final Map<String, Handler> mounts;
     private final Supplier<Future<Void>> close;
 
     /**
      * @param mounts by path prefix: a path segment boundary follows it ({@code /compat/openai}); none may be below
      *     another
      */
-    public CompatRouter(Map<String, ModelProvider> mounts) {
+    public CompatRouter(Map<String, Handler> mounts) {
         this(mounts, Future::succeededFuture);
     }
 
@@ -30,7 +30,7 @@ public final class CompatRouter implements ModelProvider {
      * @param mounts see {@link #CompatRouter(Map)}
      * @param close started by {@link #close}; completes when everything the mounts hold is released
      */
-    public CompatRouter(Map<String, ModelProvider> mounts, Supplier<Future<Void>> close) {
+    public CompatRouter(Map<String, Handler> mounts, Supplier<Future<Void>> close) {
         for (String prefix : mounts.keySet()) {
             if (!prefix.startsWith("/") || prefix.endsWith("/")) {
                 throw new IllegalArgumentException("a mount's prefix is /segment[/segment...]: " + prefix);
@@ -54,7 +54,7 @@ public final class CompatRouter implements ModelProvider {
         if (path.equals("/health")) {
             return Future.succeededFuture(request.method() == HttpMethod.GET ? health() : methodNotAllowed("GET"));
         }
-        for (Map.Entry<String, ModelProvider> mount : mounts.entrySet()) {
+        for (Map.Entry<String, Handler> mount : mounts.entrySet()) {
             String prefix = mount.getKey();
             if (path.startsWith(prefix + "/")) {
                 return mount.getValue().handle(request.withPath(path.substring(prefix.length())));

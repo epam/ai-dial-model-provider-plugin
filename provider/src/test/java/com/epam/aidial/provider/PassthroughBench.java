@@ -4,7 +4,7 @@ import static com.epam.aidial.provider.testing.MockUpstream.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.epam.aidial.provider.anthropic.AnthropicRoutes;
-import com.epam.aidial.provider.anthropic.Targets;
+import com.epam.aidial.provider.anthropic.AnthropicTargets;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.HttpServerShim;
@@ -13,6 +13,7 @@ import com.epam.aidial.provider.core.Routes;
 import com.epam.aidial.provider.credentials.AwsCredentials;
 import com.epam.aidial.provider.credentials.AzureAd;
 import com.epam.aidial.provider.credentials.GoogleTokenSource;
+import com.epam.aidial.provider.testing.Requests;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import com.sun.management.OperatingSystemMXBean;
 import io.vertx.core.Future;
@@ -99,28 +100,30 @@ class PassthroughBench {
                 vertx, config, () -> StaticCredentialsProvider.create(AwsBasicCredentials.create("AKID", "SECRET")));
         Routes vertexai = Routes.of(new AnthropicRoutes(
                 "/compat/vertexai",
-                Targets.vertexai(config),
+                AnthropicTargets.vertexai(config),
                 new UpstreamClient(vertx, config.proxies(), config.vertexai()),
                 azure,
                 google,
                 Clock.systemUTC()));
         Routes bedrock = Routes.of(new AnthropicRoutes(
                 "/compat/bedrock",
-                Targets.bedrock(config, aws, null),
+                AnthropicTargets.bedrock(config, aws, null),
                 new UpstreamClient(vertx, config.proxies(), config.bedrock()),
                 azure,
                 google,
                 Clock.systemUTC()));
         Routes openai = Routes.of(new AnthropicRoutes(
                 "/compat/openai",
-                Targets.openai(),
+                AnthropicTargets.openai(),
                 new UpstreamClient(vertx, config.proxies(), config.openai()),
                 azure,
                 google,
                 Clock.systemUTC()));
         HttpServer server = await(vertx.createHttpServer(ModelProviderVerticle.serverOptions("127.0.0.1", 0))
-                .requestHandler(new HttpServerShim(new CompatRouter(
-                        Map.of("/compat/vertexai", vertexai, "/compat/bedrock", bedrock, "/compat/openai", openai))))
+                .requestHandler(new HttpServerShim(
+                        new CompatRouter(Map.of(
+                                "/compat/vertexai", vertexai, "/compat/bedrock", bedrock, "/compat/openai", openai)),
+                        Requests.NO_CORE))
                 .listen());
         port = server.actualPort();
         client = vertx.createHttpClient(new HttpClientOptions().setMaxPoolSize(CONCURRENCY));

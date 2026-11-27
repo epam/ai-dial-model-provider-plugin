@@ -32,7 +32,7 @@ public final class AnthropicRoutes implements Routes.Group {
             Arrays.stream(Endpoint.values()).map(AnthropicRoutes::route).toList();
 
     private final String prefix;
-    private final Targets.Resolver resolver;
+    private final AnthropicTargets.Resolver resolver;
     private final UpstreamClient client;
     private final UpstreamAuth auth;
     private final Clock clock;
@@ -43,7 +43,7 @@ public final class AnthropicRoutes implements Routes.Group {
      */
     public AnthropicRoutes(
             String prefix,
-            Targets.Resolver resolver,
+            AnthropicTargets.Resolver resolver,
             UpstreamClient client,
             AzureAd azure,
             GoogleTokenSource google,

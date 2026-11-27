@@ -4,6 +4,7 @@ import com.epam.aidial.provider.api.AdapterRequest;
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
 import com.epam.aidial.provider.api.CacheBreakpoint;
+import com.epam.aidial.provider.api.CacheHeaders;
 import com.epam.aidial.provider.api.InvalidRequestException;
 import com.epam.aidial.provider.core.Buffers;
 import com.epam.aidial.provider.core.Config;
@@ -31,7 +32,7 @@ public final class ResponsesRoutes implements Routes.Group {
 
     private final Vertx vertx;
     private final String prefix;
-    private final Targets.Resolver resolver;
+    private final OpenAiTargets.Resolver resolver;
     private final UpstreamClient client;
     private final UpstreamAuth auth;
     private final OpenAiErrors.Failures failures;
@@ -45,7 +46,7 @@ public final class ResponsesRoutes implements Routes.Group {
             Vertx vertx,
             Config config,
             String prefix,
-            Targets.Resolver resolver,
+            OpenAiTargets.Resolver resolver,
             UpstreamClient client,
             AzureAd azure,
             AwsCredentials aws,
@@ -121,7 +122,7 @@ public final class ResponsesRoutes implements Routes.Group {
         boolean stream = endpoint == Endpoint.RETRIEVE ? "true".equals(clientQuery.get("stream")) : body.stream();
         Delivery delivery = Delivery.of(stream);
         CacheBreakpoint breakpoint =
-                endpoint == Endpoint.CREATE && request.asksForCacheBreakpoint() ? body.breakpoint() : null;
+                endpoint == Endpoint.CREATE && CacheHeaders.asked(request.headers()) ? body.breakpoint() : null;
         // Not the request: it holds the body, which the callbacks below must not keep alive (see Unsent).
         Future<Void> aborted = request.aborted();
         Future<Authorizer> authorizer = auth.forRequest(target, request.headers(), body.model(), aborted);

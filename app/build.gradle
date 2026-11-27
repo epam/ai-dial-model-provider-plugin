@@ -1,6 +1,8 @@
 // The standalone process: the provider module behind its own HTTP server, plus logging and tracing.
 apply plugin: 'application'
 
+evaluationDependsOn(':provider') // its test helpers (Requests)
+
 dependencies {
     implementation project(':provider')
     implementation "ch.qos.logback:logback-classic:${logback_version}"
@@ -11,6 +13,8 @@ dependencies {
     // the JDK sender cannot speak.
     implementation "io.opentelemetry:opentelemetry-exporter-otlp:${opentelemetry_version}"
     implementation "io.opentelemetry:opentelemetry-exporter-logging:${opentelemetry_version}"
+
+    testImplementation rootProject.project(':provider').sourceSets.test.output
 }
 
 application {

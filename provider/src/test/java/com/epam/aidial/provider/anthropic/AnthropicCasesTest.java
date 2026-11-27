@@ -1,6 +1,6 @@
 package com.epam.aidial.provider.anthropic;
 
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
 import com.epam.aidial.provider.core.Routes;
@@ -73,7 +73,7 @@ class AnthropicCasesTest {
         return runner;
     }
 
-    private static ModelProvider prepare(String adapter, JsonNode setup) {
+    private static Handler prepare(String adapter, JsonNode setup) {
         Vertx vertx = server.vertx();
         JsonNode stubs = setup.path("stubs");
         long now = stubs.path("now_seconds").asLong();
@@ -83,19 +83,19 @@ class AnthropicCasesTest {
                 config,
                 () -> StaticCredentialsProvider.create(AwsBasicCredentials.create(
                         stubs.path("aws_access_key_id").asText("AKID"), "s")));
-        Targets.Resolver resolver;
+        AnthropicTargets.Resolver resolver;
         Limits connections;
         switch (adapter) {
             case "openai" -> {
-                resolver = Targets.openai();
+                resolver = AnthropicTargets.openai();
                 connections = config.openai();
             }
             case "vertexai" -> {
-                resolver = Targets.vertexai(config);
+                resolver = AnthropicTargets.vertexai(config);
                 connections = config.vertexai();
             }
             default -> {
-                resolver = Targets.bedrock(config, aws, SessionTags.of(config, DialApi.from(vertx, config)));
+                resolver = AnthropicTargets.bedrock(config, aws, SessionTags.of(config, DialApi.from(vertx, config)));
                 connections = config.bedrock();
             }
         }

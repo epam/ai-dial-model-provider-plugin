@@ -1,0 +1,31 @@
+# What only the service does: it needs DIAL_URL to call DIAL Core back over HTTP, and serves the path DIAL Core calls.
+---
+name: "service: without DIAL_URL the call fails, and nothing is called"
+server: {env: {DIAL_URL: !delete }}
+mocks: []
+expect: {status: 500, json: !replace {type: error, error: {type: api_error, message: Internal server error}}}
+---
+name: "service: DIAL Core that cannot be reached is a 502"
+server: {env: {DIAL_URL: 'http://127.0.0.1:1'}}
+mocks: []
+expect: {status: 502, json: !replace {type: error, error: {type: api_error, message: Failed to reach DIAL Core}}}
+---
+name: "service: count_tokens is an unknown endpoint"
+request: {path: /openaiResponses/anthropic/v1/messages/count_tokens}
+mocks: []
+expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: Endpoint not supported}}}
+---
+name: "service: another path is an unknown endpoint"
+request: {path: /openaiResponses/openai/v1/responses}
+mocks: []
+expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: Endpoint not supported}}}
+---
+name: "service: the root is an unknown endpoint"
+request: {path: /openaiResponses/}
+mocks: []
+expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: Endpoint not supported}}}
+---
+name: "service: a method other than POST is an unknown endpoint"
+request: {method: GET, json: !delete }
+mocks: []
+expect: {status: 404, json: !replace {type: error, error: {type: not_found_error, message: Endpoint not supported}}}

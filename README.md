@@ -19,6 +19,7 @@
   - [2. Declare a plugin entry](#2-declare-a-plugin-entry)
   - [3. Point models at the entry](#3-point-models-at-the-entry)
 - [Upstreams](#upstreams)
+- [Messages API for a Responses model](#messages-api-for-a-responses-model)
 - [Settings](#settings)
 - [Standalone service](#standalone-service)
 - [Limitations](#limitations)
@@ -38,7 +39,9 @@ HTTP hop.
 | OpenAI Responses (create, retrieve, delete, cancel, `input_tokens`) | `openaiResponses`   | OpenAI, Azure OpenAI, Bedrock Mantle and Runtime, Alibaba Cloud |
 
 Requests go upstream as they are. Only the model name in the URL, the provider's version field, the credentials and
-unsupported beta flags change.
+unsupported beta flags change. The one exception: a model that only speaks the OpenAI Responses API can also be called
+with the Anthropic Messages API, which the plugin
+[translates](#messages-api-for-a-responses-model).
 
 > [!WARNING]
 > Preview. Not yet proven in production. Settings, packaging and DIAL Core's plugin API may change between releases.
@@ -102,6 +105,8 @@ One entry per adapter you use:
 
 - `adapter` is `openai`, `vertexai` or `bedrock`. It decides how the upstream is chosen
   (see [Upstreams](#upstreams)).
+- A translator is an entry of its own type, `translator`, with its own settings: see
+  [Messages API for a Responses model](#messages-api-for-a-responses-model).
 - Other settings are the [variables](#settings), by name. Values can be strings, numbers or booleans. `null` unsets a
   variable.
 - Variables not set here come from DIAL Core's environment. **Keep credentials there**: DIAL Core returns settings
@@ -171,6 +176,97 @@ Without a key, the plugin uses an Azure AD token (Azure) or AWS credentials (Bed
 Vertex AI example: use the `vertexai` adapter, put the model name in `overrideName`, and set the region and project
 in `GCP_DEFAULT_REGION` and `GCP_PROJECT_ID` (or in `extraData`: `{"region": …, "project": …}`).
 
+## Messages API for a Responses model
+
+A model whose upstream speaks only the OpenAI Responses API (Azure OpenAI, Bedrock Mantle, ...) can be called with the
+Anthropic Messages API, so that a client such as Claude Code works with it. The plugin translates the request, the
+answer and the stream. It is always on and there is nothing to set: the `openai` adapter looks at the endpoint of the
+upstream of each Messages request, and an endpoint ending in `/responses` is translated (one with `/v1/messages` in it
+is passed through, as always). Point the model's `anthropicMessages` interface at the `openai` entry, with the
+`upstreams` of the Responses model:
+
+```json
+{
+  "models": {
+    "gpt-5": {
+      "type": "chat",
+      "interfaces": {
+        "anthropicMessages": { "base_url": "dial-plugin://model-provider-openai" },
+        "openaiResponses": { "base_url": "dial-plugin://model-provider-openai" }
+      },
+      "upstreams": [
+        { "endpoint": "https://contoso.openai.azure.com/openai/v1/responses", "key": "AZURE_OPENAI_KEY" }
+      ]
+    }
+  }
+}
+```
+
+Another way is DIAL Core's *translator* contract, where the model's Messages interface is a translator and the Responses
+call goes to DIAL Core itself (the model is then the deployment `out`). The plugin entry, of the type `translator`, has
+one setting, the `direction` of the translation; the one there is is `anthropicMessagesToOpenaiResponses`.
+
+1. Declare the plugin entry:
+
+   ```json
+   {
+     "plugins": {
+       "anthropic-to-responses": {
+         "type": "translator",
+         "settings": { "direction": "anthropicMessagesToOpenaiResponses" }
+       }
+     }
+   }
+   ```
+
+2. Declare the [DIAL Core translator](https://github.com/epam/ai-dial-core/blob/development/docs/dynamic-settings/translators.md)
+   whose `baseUrl` names the plugin entry:
+
+   ```json
+   {
+     "translators": {
+       "anthropicMessagesToOpenaiResponses": {
+         "in": "anthropicMessages",
+         "out": "openaiResponses",
+         "baseUrl": "dial-plugin://anthropic-to-responses"
+       }
+     }
+   }
+   ```
+
+3. Reference the translator from the model's `anthropicMessages` interface. The model serves the Responses API itself,
+   pass-through (that is what the translator calls back):
+
+   ```json
+   {
+     "models": {
+       "gpt-5-mini": {
+         "type": "chat",
+         "overrideName": "gpt-5-mini",
+         "interfaces": {
+           "openaiResponses": { "base_url": "dial-plugin://model-provider-openai" },
+           "anthropicMessages": {
+             "mode": "translator",
+             "translator": "anthropicMessagesToOpenaiResponses"
+           }
+         },
+         "upstreams": [
+           {
+             "endpoint": "https://contoso.openai.azure.com/openai/v1/responses",
+             "key": "AZURE_OPENAI_KEY"
+           }
+         ]
+       }
+     }
+   }
+   ```
+
+The standalone service serves the same at `POST /openaiResponses/anthropic/v1/messages`, as a translator whose `baseUrl`
+is `<this service>/openaiResponses`; it calls `<DIAL_URL>openai/v1/responses` with the caller's key.
+
+What is translated, what is dropped (thinking blocks of another model's signature, `cache_control`, `blocked_domains`
+and more), and every failure are in [docs/messages-to-responses-translation.md](docs/messages-to-responses-translation.md).
+
 ## Settings
 
 Set them in the plugin entry or in DIAL Core's environment. The cloud SDKs also read their own variables from there:
@@ -224,6 +320,7 @@ Paths served. Everything else answers `404 {"detail":"Not Found"}`:
 | `POST /compat/{openai,vertexai,bedrock}/anthropic/v1/messages`              | Messages API, streamed or whole              |
 | `POST /compat/{openai,vertexai,bedrock}/anthropic/v1/messages/count_tokens` | Token counts (`404` on Bedrock invoke-model) |
 | `POST /compat/openai/openai/v1/responses`                                   | Responses API: create, streamed or whole     |
+| `POST /openaiResponses/anthropic/v1/messages`                               | Messages API over DIAL Core's Responses API  |
 | `POST …/responses/input_tokens`                                             | Input token count                            |
 | `GET`, `DELETE …/responses/{id}`, `POST …/responses/{id}/cancel`            | Retrieve, delete, cancel                     |
 | `GET /health`                                                               | Health check                                 |
@@ -244,6 +341,11 @@ Service-only variables:
 - Responses requests are proxied as they are. DIAL file URLs are not downloaded or inlined.
 - A missing or wrong upstream setting (endpoint, key) answers `502`.
 - Upstream calls are not retried. Redirects are not followed.
+- The Messages API for a Responses model: `count_tokens` is `404`; `cache_control` is ignored (no `prompt_cache_key` is
+  sent: only DIAL Core's cache affinity headers are carried over); `top_k`, `stop_sequences` and a few more parameters
+  are dropped; a web search's `blocked_domains` is dropped, so the search is not restricted; a `thinking` block that
+  this plugin did not sign (another model's, or without its signature) is dropped with its text. See the
+  [translation docs](docs/messages-to-responses-translation.md).
 
 ## Development
 

@@ -1,6 +1,6 @@
 package com.epam.aidial.provider.openai;
 
-import com.epam.aidial.provider.api.ModelProvider;
+import com.epam.aidial.provider.api.Handler;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
 import com.epam.aidial.provider.core.Routes;
@@ -56,7 +56,7 @@ class OpenAiResponsesCasesTest {
         return CasesServer.containers(SupportedRoutes.suites(Runner.RESPONSES), suite -> runner);
     }
 
-    private static ModelProvider prepare(JsonNode setup) {
+    private static Handler prepare(JsonNode setup) {
         Vertx vertx = server.vertx();
         JsonNode stubs = setup.path("stubs");
         long now = stubs.path("now_seconds").asLong();
@@ -76,7 +76,7 @@ class OpenAiResponsesCasesTest {
                 vertx,
                 config,
                 "/compat/openai",
-                Targets.openai(config),
+                OpenAiTargets.openai(config),
                 client,
                 new AzureAd(azure, "scope"),
                 aws,

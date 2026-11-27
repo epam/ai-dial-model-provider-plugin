@@ -9,11 +9,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeSet;
 
 /**
- * A variable an entry's settings leave out comes from DIAL Core's environment, where credentials belong: DIAL Core
- * keeps an entry's settings as written.
+ * The adapters of {@link ModelProviders#ADAPTERS}, each below {@code /compat/<adapter>}. A variable an entry's settings
+ * leave out comes from DIAL Core's environment, where credentials belong: DIAL Core keeps an entry's settings as
+ * written.
  */
 public final class ModelProviderPluginProvider implements PluginProvider {
 
@@ -37,9 +39,9 @@ public final class ModelProviderPluginProvider implements PluginProvider {
     @Override
     public List<Problem> validate(ObjectNode node) {
         PluginSettings settings = PluginSettings.of(node);
-        if (!ModelProviders.ADAPTERS.contains(settings.adapter())) {
-            return List.of(new Problem(
-                    ADAPTER, "must be one of " + String.join(", ", new TreeSet<>(ModelProviders.ADAPTERS))));
+        Optional<Problem> invalid = adapter(settings);
+        if (invalid.isPresent()) {
+            return List.of(invalid.get());
         }
         try {
             Config.from(settings.variables(environment));
@@ -49,12 +51,23 @@ public final class ModelProviderPluginProvider implements PluginProvider {
         }
     }
 
+    private static Optional<Problem> adapter(PluginSettings settings) {
+        if (!settings.hasAdapter()) {
+            return Optional.of(new Problem(ADAPTER, "an entry needs an adapter (one of " + adapters() + ")"));
+        }
+        return ModelProviders.ADAPTERS.contains(settings.adapter())
+                ? Optional.empty()
+                : Optional.of(new Problem(ADAPTER, "must be one of " + adapters()));
+    }
+
+    private static String adapters() {
+        return String.join(", ", new TreeSet<>(ModelProviders.ADAPTERS));
+    }
+
     @Override
     public Plugin create(ObjectNode node, Vertx vertx) {
         PluginSettings settings = PluginSettings.of(node);
-        return new ModelProviderPlugin(
-                vertx,
-                "/compat/" + settings.adapter(),
-                ModelProviders.create(vertx, Config.from(settings.variables(environment))));
+        Config config = Config.from(settings.variables(environment));
+        return new ModelProviderPlugin(vertx, "/compat/" + settings.adapter(), ModelProviders.create(vertx, config));
     }
 }

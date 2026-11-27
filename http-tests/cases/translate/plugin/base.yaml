@@ -1,0 +1,67 @@
+# What every case of this mode inherits (http-tests/README.md, bases): the translator as a plugin of DIAL Core (an
+# entry with "direction": "anthropicMessagesToOpenaiResponses"), which DIAL Core calls at the exact path of the interface, and which calls
+# DIAL Core back through the host of the request, in process. The runner (PluginCasesTest) plays DIAL Core: its host
+# calls the mock "upstream" at DIAL_URL over HTTP, with the key of the request, as DIAL Core serves a call with it. The
+# default exchange is the one of the other modes. The scenarios are in _scenarios, and run in every mode.
+server:
+  env: {DIAL_URL: '${mocks.upstream.url}'}  # where the runner's host reaches DIAL Core
+  stubs: {now_seconds: 1000}
+options: {json_member_order: any}
+request:
+  method: POST
+  path: /anthropic/v1/messages
+  headers:
+    Content-Type: application/json
+    api-key: dk
+    X-DIAL-DEPLOYMENT-ID: gpt-5.5
+  json:
+    model: claude-x
+    max_tokens: 100
+    messages: [{role: user, content: hi}]
+mocks:
+- server: upstream
+  request:
+    method: POST
+    path: /openai/v1/responses
+    headers: {api-key: dk}
+    json:
+      model: gpt-5.5
+      input: [{type: message, role: user, content: [{type: input_text, text: hi}]}]
+      store: false
+      include: [reasoning.encrypted_content]
+      stream: false
+      max_output_tokens: 100
+  response:
+    status: 200
+    json:
+      id: resp_1
+      object: response
+      status: completed
+      output:
+      - {type: message, id: msg_1, role: assistant, status: completed, content: [{type: output_text, text: Hello, annotations: []}]}
+      usage: {input_tokens: 10, output_tokens: 2, total_tokens: 12, input_tokens_details: {cached_tokens: 0, cache_write_tokens: 0}, output_tokens_details: {reasoning_tokens: 0}}
+expect:
+  status: 200
+  headers: {content-type: application/json}
+  json:
+    id: resp_1
+    type: message
+    role: assistant
+    model: gpt-5.5
+    content: [{type: text, text: Hello, citations: null}]
+    stop_reason: end_turn
+    stop_sequence: null
+    container: null
+    diagnostics: null
+    stop_details: null
+    usage:
+      input_tokens: 10
+      output_tokens: 2
+      cache_read_input_tokens: 0
+      cache_creation_input_tokens: 0
+      output_tokens_details: {thinking_tokens: 0}
+      cache_creation: null
+      inference_geo: null
+      server_tool_use: null
+      service_tier: null
+      speed: null

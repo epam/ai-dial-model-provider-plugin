@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.epam.aidial.provider.api.AdapterRequest;
+import com.epam.aidial.provider.testing.Requests;
 import com.epam.aidial.provider.upstream.UpstreamRefusedException;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -22,7 +23,7 @@ class UpstreamExtraDataTest {
         if (extraData != null) {
             headers.set("x-upstream-extra-data", extraData);
         }
-        return new AdapterRequest(
+        return Requests.of(
                 HttpMethod.POST,
                 "/anthropic/v1/messages",
                 null,

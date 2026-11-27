@@ -95,7 +95,7 @@ class AnthropicCasesTest {
                 connections = config.vertexai();
             }
             default -> {
-                resolver = AnthropicTargets.bedrock(config, aws, SessionTags.of(config, DialApi.from(vertx, config)));
+                resolver = AnthropicTargets.bedrock(config, aws, SessionTags.of(config, new DialApi(vertx)));
                 connections = config.bedrock();
             }
         }

@@ -157,8 +157,7 @@ class StrippingRoutesTest {
         AwsCredentials aws = new AwsCredentials(fx.vertx(), bedrockConfig);
         bedrockMount = mount(
                 "/compat/bedrock",
-                AnthropicTargets.bedrock(
-                        bedrockConfig, aws, SessionTags.of(bedrockConfig, DialApi.from(fx.vertx(), bedrockConfig))),
+                AnthropicTargets.bedrock(bedrockConfig, aws, SessionTags.of(bedrockConfig, new DialApi(fx.vertx()))),
                 bedrockConfig);
     }
 

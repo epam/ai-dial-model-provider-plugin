@@ -5,7 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
+import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.Routes;
+import com.epam.aidial.provider.translation.DialCoreHttp;
+import com.epam.aidial.provider.upstream.Limits;
+import com.epam.aidial.provider.upstream.UpstreamClient;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -17,6 +21,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.streams.WriteStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
@@ -41,11 +46,13 @@ public final class RoutesFixture implements BeforeEachCallback, AfterEachCallbac
 
     private Vertx vertx;
     private MockUpstream mock;
+    private com.epam.aidial.provider.api.Handler core = Requests.NO_CORE;
 
     @Override
     public void beforeEach(ExtensionContext context) throws Exception {
         vertx = Vertx.vertx();
         mock = new MockUpstream(vertx);
+        core = Requests.NO_CORE;
     }
 
     @Override
@@ -61,6 +68,13 @@ public final class RoutesFixture implements BeforeEachCallback, AfterEachCallbac
         return mock;
     }
 
+    /** The requests that follow call DIAL Core at the mock's URL over HTTP, as a service's requests do. */
+    public void coreAtMock() {
+        Config config = Config.from(Map.of("DIAL_URL", mock.url()));
+        core = new DialCoreHttp(
+                new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofSeconds(30))), config.dialUrl());
+    }
+
     public AdapterResponse send(Routes routes, HttpMethod method, String pathAndQuery, byte[] body, MultiMap headers)
             throws Exception {
         int q = pathAndQuery.indexOf('?');
@@ -72,7 +86,8 @@ public final class RoutesFixture implements BeforeEachCallback, AfterEachCallbac
                 query,
                 headers,
                 Buffer.buffer(body),
-                Promise.<Void>promise().future())));
+                Promise.<Void>promise().future(),
+                core)));
     }
 
     /** Any method; the body may be null, {@code headers} are name and value pairs. */

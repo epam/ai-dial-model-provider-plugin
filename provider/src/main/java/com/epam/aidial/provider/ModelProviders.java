@@ -2,6 +2,7 @@ package com.epam.aidial.provider;
 
 import com.epam.aidial.provider.anthropic.AnthropicRoutes;
 import com.epam.aidial.provider.anthropic.AnthropicTargets;
+import com.epam.aidial.provider.api.ConfigException;
 import com.epam.aidial.provider.core.CompatRouter;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
@@ -30,7 +31,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 public final class ModelProviders {
 
@@ -38,12 +38,17 @@ public final class ModelProviders {
 
     private ModelProviders() {}
 
+    /**
+     * The user info of a session tag is fetched through the core of each request (see {@link DialApi}), so no DIAL_URL
+     * is needed here: a plugin's core is its host. Without a core that reaches DIAL Core, no tag takes its value from
+     * the user info.
+     */
     public static CompatRouter create(Vertx vertx, Config config) {
         AzureAd azure = new AzureAd(new AzureTokens(vertx), config.azureOpenAiScope());
         GoogleTokens google = new GoogleTokens(vertx, config);
         Clock now = Clock.systemUTC();
 
-        DialApi dial = DialApi.from(vertx, config);
+        DialApi dial = new DialApi(vertx);
         AwsCredentials aws = new AwsCredentials(vertx, config);
 
         Proxies proxies = config.proxies();
@@ -74,7 +79,7 @@ public final class ModelProviders {
                         bedrock,
                         TRANSLATOR_PREFIX,
                         MessagesOverResponses.withCoreUpstream(CoreHandler::handle)),
-                () -> close(vertx, clients, dial, aws));
+                () -> close(vertx, clients, aws));
     }
 
     public static CompatRouter createTranslator() {
@@ -82,21 +87,34 @@ public final class ModelProviders {
     }
 
     /**
+     * The standalone service: the user info of a session tag comes from DIAL Core over HTTP, so DIAL_URL is required
+     * then.
+     *
+     * @throws ConfigException when AWS_SESSION_TAGS has a UserInfo source and DIAL_URL is unset
+     */
+    public static CompatRouter standalone(Vertx vertx, Config config) {
+        if (config.dialUrl() == null && SessionTags.usesUserInfo(config)) {
+            throw new ConfigException("DIAL_URL", "DIAL_URL must be set when AWS_SESSION_TAGS has a UserInfo source");
+        }
+        return create(vertx, config);
+    }
+
+    /**
      * The standalone server: its requests call DIAL Core back over HTTP (the {@code core} of the request), outside
      * the mounts' caps, as {@link DialApi}'s calls are. The client of the calls closes with {@code vertx}.
+     *
+     * @throws ConfigException see {@link #standalone}
      */
     public static HttpServerShim server(Vertx vertx, Config config) {
+        CompatRouter router = standalone(vertx, config);
         UpstreamClient dialCoreClient =
                 new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofMinutes(10)));
-        return new HttpServerShim(create(vertx, config), new DialCoreHttp(dialCoreClient, config.dialUrl()));
+        return new HttpServerShim(router, new DialCoreHttp(dialCoreClient, config.dialUrl()));
     }
 
     /** DIAL Core's translator contract: Core calls {@code <base URL>/anthropic/v1/messages}, and is called back. */
     public static final String TRANSLATOR_PREFIX = "/openaiResponses";
 
-    /**
-     * @param dial null without DIAL_URL
-     */
     public static Routes openaiMount(
             Vertx vertx,
             Config config,
@@ -105,7 +123,7 @@ public final class ModelProviders {
             AzureAd azure,
             GoogleTokenSource google,
             AwsCredentials aws,
-            @Nullable DialApi dial,
+            DialApi dial,
             Clock now) {
         ResponsesRoutes responses =
                 new ResponsesRoutes(vertx, config, prefix, OpenAiTargets.openai(config), client, azure, aws, dial, now);
@@ -118,13 +136,9 @@ public final class ModelProviders {
     }
 
     /** The AWS clients are closed on a worker thread, as their close blocks. */
-    private static Future<Void> close(
-            Vertx vertx, List<UpstreamClient> clients, @Nullable DialApi dial, AwsCredentials aws) {
+    private static Future<Void> close(Vertx vertx, List<UpstreamClient> clients, AwsCredentials aws) {
         List<Future<?>> closing = new ArrayList<>();
         clients.forEach(client -> closing.add(client.close()));
-        if (dial != null) {
-            closing.add(dial.close());
-        }
         closing.add(vertx.executeBlocking(() -> {
             aws.close();
             return null;

@@ -1,4 +1,4 @@
-package com.epam.aidial.provider.translation;
+package com.epam.aidial.provider.core;
 
 import com.epam.aidial.provider.api.AdapterResponse;
 import com.epam.aidial.provider.api.Body;
@@ -9,7 +9,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.WriteStream;
 
-final class Bodies {
+public final class Bodies {
 
     private Bodies() {}
 
@@ -17,7 +17,7 @@ final class Bodies {
      * The answer with its body read to its end. Fails if the body breaks before it ends: nothing of it is used, and
      * nothing has been written to the client yet.
      */
-    static Future<AdapterResponse> whole(AdapterResponse answer) {
+    public static Future<AdapterResponse> whole(AdapterResponse answer) {
         if (answer.body() instanceof Body.Bytes) {
             return Future.succeededFuture(answer);
         }

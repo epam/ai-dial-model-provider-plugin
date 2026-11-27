@@ -87,6 +87,11 @@ public record AdapterRequest(
         }
     }
 
+    /** What the work for the request needs besides its own data, and keeps no body alive. */
+    public RequestScope scope() {
+        return new RequestScope(aborted, core);
+    }
+
     public AdapterRequest withHeaders(MultiMap newHeaders) {
         return new AdapterRequest(method, path, query, newHeaders, body, aborted, core);
     }

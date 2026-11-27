@@ -68,6 +68,7 @@ class BedrockRoutesTest {
 
     @BeforeEach
     void start() {
+        fx.coreAtMock();
         fx.mock()
                 .reply("/model/", 200, Map.of("Content-Type", "application/json"), "{\"id\":\"msg_1\"}")
                 .reply("/anthropic/", 200, Map.of("Content-Type", "application/json"), "{\"id\":\"msg_2\"}")
@@ -109,8 +110,6 @@ class BedrockRoutesTest {
                 "ANTHROPIC_BASE_URL",
                 fx.mock().url(),
                 "AWS_ENDPOINT_URL_STS",
-                fx.mock().url(),
-                "DIAL_URL",
                 fx.mock().url()));
         for (int i = 0; i < overrides.length; i += 2) {
             if (overrides[i + 1] == null) {
@@ -124,7 +123,7 @@ class BedrockRoutesTest {
                 fx.vertx(),
                 config,
                 () -> StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIDCHAIN", "chainsecret")));
-        SessionTags tags = SessionTags.of(config, DialApi.from(fx.vertx(), config));
+        SessionTags tags = SessionTags.of(config, new DialApi(fx.vertx()));
         return Routes.of(new AnthropicRoutes(
                 "/compat/bedrock",
                 AnthropicTargets.bedrock(config, aws, tags),

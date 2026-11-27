@@ -40,7 +40,7 @@ public final class ResponsesRoutes implements Routes.Group {
     private final Clock clock;
 
     /**
-     * @param dial null without DIAL_URL: no role is then tagged by user (the only use of DIAL Core)
+     * @param dial fetches the user info that tags a role (the only use of DIAL Core), through the core of each request
      */
     public ResponsesRoutes(
             Vertx vertx,
@@ -125,7 +125,7 @@ public final class ResponsesRoutes implements Routes.Group {
                 endpoint == Endpoint.CREATE && CacheHeaders.asked(request.headers()) ? body.breakpoint() : null;
         // Not the request: it holds the body, which the callbacks below must not keep alive (see Unsent).
         Future<Void> aborted = request.aborted();
-        Future<Authorizer> authorizer = auth.forRequest(target, request.headers(), body.model(), aborted);
+        Future<Authorizer> authorizer = auth.forRequest(target, request.headers(), request.scope(), body.model());
 
         MultiMap headers = OpenAiHeaders.toUpstream(target, endpoint);
         Unsent unsent = new Unsent(body.bytes());

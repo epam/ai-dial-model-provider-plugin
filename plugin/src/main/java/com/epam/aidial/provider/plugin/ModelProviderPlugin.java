@@ -67,16 +67,20 @@ final class ModelProviderPlugin implements Plugin {
                 .map(response -> new Answer(context, response, aborted));
     }
 
-    private static Handler coreCall(HostDelegate host, Future<Void> aborted) {
+    /**
+     * The call to DIAL Core through the host, which serves any route of Core's API: a create operation (a POST with a
+     * body), or a GET such as the user info of the caller (no body).
+     */
+    static Handler coreCall(HostDelegate host, Future<Void> aborted) {
         return call -> {
             ObjectNode body;
             try {
-                body = (ObjectNode) MAPPER.readTree(Buffers.array(call.body()));
+                body = call.body().length() == 0 ? null : (ObjectNode) MAPPER.readTree(Buffers.array(call.body()));
             } catch (IOException | ClassCastException e) {
                 return Future.failedFuture(e);
             }
             String uri = call.query() == null ? call.path() : call.path() + "?" + call.query();
-            return host.call(new Call(uri, call.headers(), body)).map(response -> {
+            return host.call(new Call(call.method(), uri, call.headers(), body)).map(response -> {
                 aborted.onComplete(v -> response.cancel());
                 return new AdapterResponse(
                         response.statusCode(),

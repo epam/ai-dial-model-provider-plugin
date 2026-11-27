@@ -1,7 +1,10 @@
 package com.epam.aidial.provider.core;
 
+import com.epam.aidial.provider.api.AdapterRequest;
+import com.epam.aidial.provider.api.AdapterResponse;
+import com.epam.aidial.provider.api.Body;
+import com.epam.aidial.provider.api.RequestScope;
 import com.epam.aidial.provider.upstream.ClientGoneException;
-import com.epam.aidial.provider.upstream.Limits;
 import com.epam.aidial.provider.upstream.UpstreamClient;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -9,41 +12,29 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
-import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Outside the mounts' connection caps; every body read is bounded by a 600 s read timeout. */
+/**
+ * The calls this process makes to DIAL Core, as GET requests of a path and an API key. They go through the
+ * {@link AdapterRequest#core() core} of the request they are made for: over HTTP at DIAL_URL for a service, through the
+ * host for a plugin (which needs no DIAL_URL).
+ */
 public final class DialApi {
 
+    /** The path of the user info of the caller of an API key. */
+    public static final String USER_INFO = "/v1/user/info";
+
     private static final int ATTEMPTS = 3;
+
     private final Vertx vertx;
-    private final UpstreamClient client;
-    private final String base;
 
-    /** Null when DIAL_URL is unset. */
-    public static DialApi from(Vertx vertx, Config config) {
-        String url = config.dialUrl();
-        return url == null ? null : new DialApi(vertx, config, url);
-    }
-
-    private DialApi(Vertx vertx, Config config, String url) {
-        this(vertx, config, url, 600_000);
-    }
-
-    /** For tests: another read timeout. */
-    DialApi(Vertx vertx, Config config, String url, long readTimeoutMillis) {
+    public DialApi(Vertx vertx) {
         this.vertx = vertx;
-        this.client =
-                new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofMillis(readTimeoutMillis)));
-        this.base = url;
     }
 
-    public Future<Void> close() {
-        return client.close();
-    }
-
-    public String userInfoUrl() {
-        return base + "v1/user/info";
+    public enum Retry {
+        TRANSPORT,
+        TRANSPORT_AND_STATUS
     }
 
     public static final class DownloadException extends RuntimeException {
@@ -57,17 +48,15 @@ public final class DialApi {
         }
     }
 
-    public enum Retry {
-        TRANSPORT,
-        TRANSPORT_AND_STATUS
-    }
-
     /**
-     * Fails with a DownloadException (the last status or transport error), with ClientGoneException once {@code
-     * aborted} completes, or with IllegalArgumentException for an invalid URL.
+     * Fails with a {@link DownloadException} (the last status or transport error), or with ClientGoneException once
+     * {@code aborted} completes.
+     *
+     * @param scope the request the call is made for: its core makes the call, and its client going stops it
+     * @param path  starts with {@code /}
      */
-    public Future<Buffer> get(String url, String key, Retry retry, Future<Void> aborted) {
-        return attempt(url, key, retry, aborted, 1).compose(answer -> switch (answer) {
+    public Future<Buffer> get(RequestScope scope, String path, String key, Retry retry) {
+        return attempt(scope, path, key, retry, 1).compose(answer -> switch (answer) {
             case Answer.Response r ->
                 UpstreamClient.UpstreamResponse.isSuccess(r.status())
                         ? Future.succeededFuture(r.body())
@@ -76,29 +65,34 @@ public final class DialApi {
         });
     }
 
-    /** Resolves with the last answer, a 2xx or not, or the last transport failure as an {@code Answer.Failed}. */
-    private Future<Answer> attempt(String url, String key, Retry retry, Future<Void> aborted, int n) {
+    /** Resolves with the last answer, a 2xx or not, or the last failure as an {@code Answer.Failed}. */
+    private Future<Answer> attempt(RequestScope scope, String path, String key, Retry retry, int n) {
         MultiMap headers = MultiMap.caseInsensitiveMultiMap().set("Api-Key", key);
-        return client.send(HttpMethod.GET, url, headers, null, aborted)
-                .compose(
-                        response -> response.body().<Answer>map(b -> new Answer.Response(response.status(), b)),
-                        e -> Future.succeededFuture(new Answer.Failed(e)))
+        Future<Void> aborted = scope.aborted();
+        AdapterRequest request =
+                new AdapterRequest(HttpMethod.GET, path, null, headers, Buffer.buffer(), aborted, scope.core());
+        return Answers.call(scope.core(), request)
+                .compose(Bodies::whole)
+                .map(response -> (Answer) new Answer.Response(response.status(), body(response)))
+                .recover(e -> Future.succeededFuture(new Answer.Failed(e)))
                 .compose(answer -> {
                     Throwable error = answer instanceof Answer.Failed f ? f.error() : null;
                     if (ClientGoneException.isGone(error, aborted)) {
                         return Future.failedFuture(new ClientGoneException());
                     }
-                    if (error instanceof IllegalArgumentException) {
-                        return Future.failedFuture(error); // an invalid URL, found before any request
-                    }
                     if (!retried(answer, retry) || n == ATTEMPTS) {
                         return Future.succeededFuture(answer);
                     }
                     Promise<Answer> next = Promise.promise();
-                    vertx.setTimer(backoffMillis(n), t -> attempt(url, key, retry, aborted, n + 1)
+                    vertx.setTimer(backoffMillis(n), t -> attempt(scope, path, key, retry, n + 1)
                             .onComplete(next));
                     return next.future();
                 });
+    }
+
+    /** {@link Bodies#whole} has read it. */
+    private static Buffer body(AdapterResponse response) {
+        return ((Body.Bytes) response.body()).buffer();
     }
 
     private static boolean retried(Answer answer, Retry retry) {

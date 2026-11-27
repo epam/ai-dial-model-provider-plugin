@@ -5,14 +5,25 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.epam.aidial.provider.api.AdapterRequest;
+import com.epam.aidial.provider.api.AdapterResponse;
+import com.epam.aidial.provider.api.Handler;
+import com.epam.aidial.provider.api.RequestScope;
 import com.epam.aidial.provider.core.Config;
 import com.epam.aidial.provider.core.DialApi;
 import com.epam.aidial.provider.json.Json;
 import com.epam.aidial.provider.testing.MockUpstream;
+import com.epam.aidial.provider.testing.Requests;
+import com.epam.aidial.provider.translation.DialCoreHttp;
+import com.epam.aidial.provider.upstream.Limits;
+import com.epam.aidial.provider.upstream.UpstreamClient;
+import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpMethod;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -29,8 +40,11 @@ class SessionTagsTest {
     private static final String BOTH = """
             {"m":"Bedrock.modelId","p":"UserInfo.project"}""";
 
+    private static final Future<Void> NEVER = Promise.<Void>promise().future();
+
     private Vertx vertx;
     private MockUpstream dial;
+    private Handler core;
 
     @BeforeEach
     void start() throws Exception {
@@ -42,6 +56,9 @@ class SessionTagsTest {
                     .end("{\"roles\":[\"r1\"],\"project\":\"" + key.substring(key.length() - 1)
                             + "\",\"userClaims\":{\"email\":\"" + key + "@b.c\"}}");
         });
+        Config config = Config.from(Map.of("DIAL_URL", dial.url()));
+        core = new DialCoreHttp(
+                new UpstreamClient(vertx, config.proxies(), Limits.uncapped(Duration.ofSeconds(30))), config.dialUrl());
     }
 
     @AfterEach
@@ -188,12 +205,31 @@ class SessionTagsTest {
     }
 
     @Test
-    void withoutDialUrl() throws Exception {
-        SessionTags tags = new SessionTags(sessionTags(BOTH), null);
+    void withoutDialCore() throws Exception {
+        SessionTags tags = new SessionTags(sessionTags(BOTH), new DialApi(vertx));
         assertEquals(
                 "BedrockAccessSession: m=x",
-                describe(await(
-                        tags.resolve(headers("ka"), "x", Promise.<Void>promise().future()))));
+                describe(await(tags.resolve(headers("ka"), new RequestScope(NEVER, Requests.NO_CORE), "x"))),
+                "a core that cannot call DIAL Core: the user info tags are skipped");
+    }
+
+    @Test
+    void userInfoComesThroughTheRequestsCore() throws Exception {
+        List<AdapterRequest> sent = new ArrayList<>();
+        Handler recording = request -> {
+            sent.add(request);
+            return Future.succeededFuture(AdapterResponse.json(200, "{\"roles\":[],\"project\":\"p\"}"));
+        };
+        SessionTags tags = new SessionTags(sessionTags(BOTH), new DialApi(vertx));
+        assertEquals(
+                "Project_p: m=x p=p",
+                describe(await(tags.resolve(headers("ka"), new RequestScope(NEVER, recording), "x"))));
+        assertEquals(1, sent.size());
+        assertEquals(HttpMethod.GET, sent.get(0).method());
+        assertEquals("/v1/user/info", sent.get(0).path());
+        assertEquals("ka", sent.get(0).headers().get("Api-Key"));
+        assertEquals(0, sent.get(0).body().length());
+        assertEquals(0, dial.seen().size(), "the request's core is called, not DIAL_URL");
     }
 
     @Test
@@ -216,16 +252,14 @@ class SessionTagsTest {
     }
 
     private String resolve(String tags, String apiKey, String model) throws Exception {
-        DialApi api = DialApi.from(vertx, Config.from(Map.of("DIAL_URL", dial.url())));
-        SessionTags st = new SessionTags(sessionTags(tags), api);
+        SessionTags st = new SessionTags(sessionTags(tags), new DialApi(vertx));
         try {
             // the model as the routes pass it on: its text when the body's model is a string, else null
             String stringModel =
                     model != null && Json.parseOrNull(model.getBytes(StandardCharsets.UTF_8)) instanceof String text
                             ? text
                             : null;
-            return describe(await(st.resolve(
-                    headers(apiKey), stringModel, Promise.<Void>promise().future())));
+            return describe(await(st.resolve(headers(apiKey), new RequestScope(NEVER, core), stringModel)));
         } catch (ExecutionException e) {
             return "error";
         }

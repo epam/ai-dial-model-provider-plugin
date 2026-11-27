@@ -81,21 +81,6 @@ class ModelProviderPluginTest {
     }
 
     @Test
-    void entryNamesOneKnownAdapter() {
-        ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
-        assertEquals("adapter", single(provider.validate(settings())).path());
-        assertEquals(
-                "adapter",
-                single(provider.validate(settings("adapter", "nope"))).path());
-        assertEquals(
-                "adapter",
-                single(provider.validate(settings().put("adapter", 1))).path());
-        for (String adapter : ModelProviders.ADAPTERS) {
-            assertEquals(List.of(), provider.validate(settings("adapter", adapter)), adapter);
-        }
-    }
-
-    @Test
     void invalidSettingIsRejected() {
         PluginProvider.Problem problem = single(new ModelProviderPluginProvider(Map.of())
                 .validate(settings("adapter", "openai", "HTTP_MAX_CONNECTIONS", "many")));
@@ -128,31 +113,11 @@ class ModelProviderPluginTest {
     }
 
     @Test
-    void anAdapterThatIsNotTextIsNoAdapter() {
-        ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
-        ObjectNode object = settings();
-        object.putObject("adapter");
-        for (ObjectNode entry : List.of(
-                settings().putNull("adapter"),
-                settings().put("adapter", true),
-                settings().put("adapter", 1.5),
-                object)) {
-            assertEquals("adapter", single(provider.validate(entry)).path(), entry.toString());
-        }
-    }
-
-    @Test
     void anEntrysValuesAreTheTextTheEnvironmentWouldHold() {
         ModelProviderPluginProvider provider = new ModelProviderPluginProvider(Map.of());
         ObjectNode object = settings("adapter", "bedrock");
         object.putObject("AWS_SESSION_TAGS").put("team", "a");
         assertEquals(List.of(), provider.validate(object), "an object is its JSON");
-
-        ObjectNode array = settings("adapter", "bedrock");
-        array.putArray("AWS_SESSION_TAGS").add("a");
-        PluginProvider.Problem notObject = single(provider.validate(array));
-        assertEquals("AWS_SESSION_TAGS", notObject.path(), "an array is its JSON, which is no object of strings");
-        assertTrue(notObject.message().contains("must be a JSON object of strings"), notObject.message());
 
         assertEquals(
                 new PluginProvider.Problem("HTTP_MAX_CONNECTIONS", "HTTP_MAX_CONNECTIONS must be an integer"),
@@ -424,11 +389,11 @@ class ModelProviderPluginTest {
     }
 
     @Test
-    void serviceLoaderFindsTheType() {
-        List<String> types = ServiceLoader.load(PluginProvider.class).stream()
-                .map(p -> p.get().type())
+    void serviceLoaderFindsTheIds() {
+        List<String> ids = ServiceLoader.load(PluginProvider.class).stream()
+                .map(p -> p.get().id())
                 .toList();
-        assertEquals(List.of("model-provider", "translator"), types);
+        assertEquals(List.of("model-provider", "translator"), ids);
     }
 
     private Plugin plugin(Map<String, String> environment, ObjectNode settings) {

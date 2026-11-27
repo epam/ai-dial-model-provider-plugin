@@ -30,9 +30,13 @@ dependencies {
     compileOnly "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
     compileOnly "org.slf4j:slf4j-api:${slf4j_version}"
     implementation project(':provider')
+    // The settings' JSON Schemas come from the settings' Jackson models; Jackson itself is DIAL Core's.
+    implementation "com.github.victools:jsonschema-generator:${victools_jsonschema_version}"
+    implementation "com.github.victools:jsonschema-module-jackson:${victools_jsonschema_version}"
 
     testImplementation pluginApi
     testImplementation "com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}"
+    testImplementation "com.networknt:json-schema-validator:${networknt_json_schema_validator_version}"
     testImplementation rootProject.project(':provider').sourceSets.test.output
     // The HTTP cases' runner (provider's test output) reads them
     testImplementation "org.yaml:snakeyaml:${snakeyaml_version}"

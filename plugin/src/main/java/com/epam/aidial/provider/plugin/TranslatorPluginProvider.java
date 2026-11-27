@@ -2,10 +2,11 @@ package com.epam.aidial.provider.plugin;
 
 import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.PluginProvider;
+import com.epam.aidial.core.plugin.PluginTarget;
 import com.epam.aidial.provider.ModelProviders;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
-import java.util.List;
+import java.util.Set;
 
 /**
  * DIAL Core's translator contract, served in process: the Messages API for a deployment that serves the Responses API,
@@ -15,13 +16,23 @@ import java.util.List;
 public final class TranslatorPluginProvider implements PluginProvider {
 
     @Override
-    public String type() {
+    public String id() {
         return "translator";
     }
 
     @Override
-    public List<Problem> validate(ObjectNode node) {
-        return TranslatorSettings.problems(node);
+    public String description() {
+        return "Translates the Anthropic Messages API to the OpenAI Responses API.";
+    }
+
+    @Override
+    public Set<PluginTarget> targets() {
+        return Set.of(PluginTarget.TRANSLATOR);
+    }
+
+    @Override
+    public ObjectNode settingsSchema() {
+        return Schemas.of(TranslatorSettings.class, Void.class);
     }
 
     @Override
